@@ -475,7 +475,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                 table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
                     'image_too_small'.format(aperture)
 
-            if file_exists is not True :
+            if file_exists is not True:
 
                 table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
                     'image_not_available'.format(aperture)
