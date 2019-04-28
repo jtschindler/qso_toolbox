@@ -40,10 +40,87 @@ except ImportError:
 from pyvo.dal import sia
 
 
-import utils as ut
+from qso_toolbox import utils as ut
 
 import itertools
 import multiprocessing as mp
+
+
+
+# copied from http://docs.astropy.org/en/stable/_modules/astropy/io/fits/column.html
+# L: Logical (Boolean)
+# B: Unsigned Byte
+# I: 16-bit Integer
+# J: 32-bit Integer
+# K: 64-bit Integer
+# E: Single-precision Floating Point
+# D: Double-precision Floating Point
+# C: Single-precision Complex
+# M: Double-precision Complex
+# A: Character
+fits_to_numpy = {'L': 'i1', 'B': 'u1', 'I': 'i2', 'J': 'i4', 'K': 'i8',
+                'E': 'f4',
+              'D': 'f8', 'C': 'c8', 'M': 'c16', 'A': 'a'}
+
+
+
+
+def fits_to_hdf(filename):
+    """ Convert fits data table to hdf5 data table.
+
+    :param filename:
+    :return:
+    """
+    hdu = fits.open(filename)
+    filename = os.path.splitext(filename)[0]
+    df = pd.DataFrame()
+
+    format_list = ['D', 'J']
+
+    dtype_dict = {}
+
+    # Cycle through all columns in the fits file
+    for idx, column in enumerate(hdu[1].data.columns):
+
+        # Check whether the column is in a multi-column format
+        if len(column.format) > 1 and column.format[-1] in format_list:
+            n_columns = int(column.format[:-1])
+
+            # unWISE specific solution
+            if column.name[:6] == 'unwise' and n_columns == 2:
+                passbands = ['w1', 'w2']
+
+                for jdx, passband in enumerate(passbands):
+                    new_column_name = column.name + '_' + passband
+
+                    print(new_column_name)
+
+                    df[new_column_name] = hdu[1].data[column.name][:, jdx]
+
+                    numpy_type = fits_to_numpy[column.format[-1]]
+                    dtype_dict.update({new_column_name: numpy_type})
+
+            # SOLUTIONS FOR OTHER SURVEYS MAY BE APPENDED HERE
+
+        # else for single columns
+        else:
+            print(column.name)
+            df[column.name] = hdu[1].data[column.name]
+            numpy_type = fits_to_numpy[column.format[-1]]
+            dtype_dict.update({column.name: numpy_type})
+
+    # update the dtype for the DataFrame
+    print(dtype_dict)
+    df.astype(dtype_dict, inplace=True)
+
+    df.to_hdf(filename+'.hdf5', 'data', format='table')
+
+
+
+
+
+
+
 
 def check_if_table_is_pandas_dataframe(table):
     """

@@ -2,4 +2,3 @@
 
 __version__ = '0.1'
 
-import cat_utils
