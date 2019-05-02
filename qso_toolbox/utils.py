@@ -24,8 +24,8 @@ def decdecl_to_dms(ddecl):
     is_negative = ddecl < 0
     ddecl = abs(ddecl)
     decl_minutes, decl_seconds = divmod(ddecl * 3600, 60)
-    decl_degrees, dec_minutes = divmod(decl_minutes, 60)
-    decl_degrees[~is_negative] = - decl_degrees[~is_negative]
+    decl_degrees, decl_minutes = divmod(decl_minutes, 60)
+    decl_degrees[is_negative] = - decl_degrees[is_negative]
 
     return decl_degrees, decl_minutes, decl_seconds
 

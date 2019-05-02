@@ -116,12 +116,6 @@ def fits_to_hdf(filename):
     df.to_hdf(filename+'.hdf5', 'data', format='table')
 
 
-
-
-
-
-
-
 def check_if_table_is_pandas_dataframe(table):
     """
     Check whether the supplied table is a pandas Dataframe and convert to it
@@ -198,11 +192,9 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
 
     table, table_format = check_if_table_is_pandas_dataframe(table)
 
-
     table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                            table[dec_col_name].values,
-                                            epoch="J")
-
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
 
     for jdx, band in enumerate(bands):
 
@@ -213,7 +205,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
             ra = table[ra_col_name].values[idx]
             dec = table[dec_col_name].values[idx]
 
-            if survey== "desdr1":
+            if survey == "desdr1":
 
                 img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
                            band + "_fov" + '{:d}'.format(fov)
@@ -235,7 +227,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
 
             if url is not None:
                 download_image(url, image_name=img_name, image_path=image_path,
-                           verbosity=verbosity)
+                               verbosity=verbosity)
 
 
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_path,
@@ -291,7 +283,7 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_path,
                        verbosity=verbosity)
         except:
             # if verbosity >0:
-            print ('Download error')
+            print('Download error')
 
 
 def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
@@ -321,11 +313,9 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
     table, table_format = check_if_table_is_pandas_dataframe(table)
 
-
     table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                            table[dec_col_name].values,
-                                            epoch="J")
-
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
 
     for jdx, band in enumerate(bands):
 
@@ -376,24 +366,22 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
     fov = fov / 3600.
 
     try:
-        img_table = svc.search((ra,dec), (fov/np.cos(dec*np.pi/180), fov),
-                           verbosity=verbosity).to_table()
+        img_table = svc.search((ra, dec), (fov/np.cos(dec*np.pi/180), fov),
+                               verbosity=verbosity).to_table()
     except:
         img_table = svc.search((ra, dec),
                                (fov / np.cos(dec * np.pi / 180), fov),
                                verbosity=verbosity).table
 
-    if verbosity>0:
+    if verbosity > 0:
         print("The full image list contains", len(img_table), "entries")
 
     sel_band = img_table['obs_bandpass'].astype(str) == band
 
-
-    sel = sel_band & ((img_table['proctype'].astype(str) == 'Stack') & \
+    sel = sel_band & ((img_table['proctype'].astype(str) == 'Stack') &
                       (img_table['prodtype'].astype(str) == 'image'))
-          # basic selection
 
-
+    # basic selection
     table = img_table[sel]  # select
 
     if len(table) > 0:
@@ -401,16 +389,15 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
             'float'))]  # pick image with longest exposure time
         url = row['access_url'].decode()  # get the download URL
 
-        if verbosity>0:
+        if verbosity > 0:
             print('downloading deepest stacked image...')
 
     else:
-        if verbosity>0:
+        if verbosity > 0:
             print('No image available.')
         url = None
 
     return url
-
 
 
 def download_image(url, image_name, image_path, verbosity=0):
@@ -443,11 +430,11 @@ def download_image(url, image_name, image_path, verbosity=0):
             output = open(image_path+'/'+image_name+'.fits', 'wb')
             output.write(file)
             output.close()
-            if verbosity>0:
+            if verbosity > 0:
                 print("Download of {} to {} completed".format(image_name,
                                                               image_path))
         else:
-            if verbosity>0:
+            if verbosity > 0:
                 print("Download of {} unsuccessful".format(image_name))
 
     except (IncompleteRead, HTTPError, AttributeError, ValueError) as err:
@@ -475,16 +462,13 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
     :return:
     """
 
-
     # Check if table is pandas DataFrame otherwise convert to one
     table, format = check_if_table_is_pandas_dataframe(table)
     # Add a column to the table specifying the object name used
     # for the image name
     table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                            table[dec_col_name].values,
-                                            epoch="J")
-
-
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
 
     for jdx, survey in enumerate(surveys):
 
@@ -497,9 +481,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
             ra = table[ra_col_name].values[idx]
             dec = table[dec_col_name].values[idx]
 
-
-
-            img_name = table.temp_object_name[idx]+"_"+survey+"_"+ \
+            img_name = table.temp_object_name[idx]+"_"+survey+"_" + \
                        band+"_fov"+'{:d}'.format(fov)
 
             # Check if file is in folder
@@ -525,10 +507,8 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                                    image_path=image_path,
                                    verbosity=verbosity)
 
-
                     file_path = image_path + '/' + img_name + '.fits'
                     file_exists = os.path.isfile(file_path)
-
 
             file_size_sufficient = False
             if file_exists is True:
@@ -544,7 +524,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                                                          ra, dec, survey,
                                                          aperture,
                                                          verbosity=verbosity)
-                table.loc[idx, 'forced_{}_mag_{}'.format(survey,band)] = mag
+                table.loc[idx, 'forced_{}_mag_{}'.format(survey, band)] = mag
                 table.loc[idx, 'forced_{}_flux_{}'.format(survey, band)] = flux
                 table.loc[idx, 'forced_{}_sn_{}'.format(survey, band)] = sn
                 table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
@@ -561,8 +541,6 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
 
                 table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
                     'image_not_available'.format(aperture)
-
-
 
     table.drop(columns='temp_object_name')
 
@@ -645,7 +623,7 @@ def check_image_size(image_name, file_path, verbosity):
 
     shape = fits.getdata(file_path).shape
     min_axis = np.min(shape)
-    if min_axis < 50 and verbosity >0:
+    if min_axis < 50 and verbosity > 0:
         print("Minimum image dimension : {} (pixels)".format(min_axis))
         print("Too few pixels in one axis (<50). Skipping {}".format(
             image_name))
@@ -666,11 +644,108 @@ def flux_to_magnitude(flux, survey):
     :return:
     """
     if survey == "desdr1":
-        zpt=30.
+        zpt = 30.
     else:
         raise ValueError("Survey name not recgonized: {}".format(survey))
 
     return -2.5 * np.log10(flux) + zpt
+
+
+def make_png(filename, ra, dec, size=20, aperture=2, band='filter',
+             forced_mag=None, forced_magerr=None, forced_sn=None,
+             catmag=None, caterr=None, catsn=None, output='stamp.png', \
+                                                        title=None):
+    '''
+
+    make  a png file of the Xarcsec x Xarcsec stamp and plot
+    an 6arcsecs aperture
+
+    '''
+
+    data, hdr = fits.getdata(filename, header=True)
+
+    wcs_img = wcs.WCS(hdr)
+    pixcrd = wcs_img.wcs_world2pix(ra, dec, 0)
+    positions = (np.float(pixcrd[0]), np.float(pixcrd[1]))
+    print(pixcrd, positions)
+    overlap = True
+    try:
+        img_stamp = Cutout2D(data, positions, size=size * u.arcsec,
+                             wcs=wcs_img)
+    except:
+        print("Source not in image")
+        overlap = False
+
+    if overlap:
+        img_stamp = img_stamp.data
+        (x,y) = img_stamp.shape
+
+
+    if overlap:
+        plt.cla()
+        plt.clf()
+        fig = plt.figure()
+        ax = fig.add_subplot(111, aspect=1)
+
+        # norm = ImageNormalize(img_stamp, interval=ZScaleInterval())
+        # simg = ax.imshow(img_stamp, origin='lower', norm=norm, cmap='gray')
+
+        zscaleimg = img_stamp.copy()
+        #Not considering NanS
+        mask = np.isnan(zscaleimg)
+        median = np.nanmedian(zscaleimg)
+
+        zscaleimg[mask] = median
+        z1, z2 = zscale(zscaleimg)
+
+        simg = ax.imshow(img_stamp, origin='lower', cmap='gray',
+                                    vmin=z1, vmax=z2)
+
+        fig.colorbar(simg)
+
+        # Plot circular aperture (forced photometry flux)
+        (yy, xx) = img_stamp.shape
+        circx = (xx * 0.5) #+ 1
+        circy = (yy * 0.5) #+ 1
+        aper_pix = aperture_inpixels(aperture, hdr)
+
+        circle = plt.Circle((circx, circy), aper_pix, color='y', fill=False,
+                            lw=1.5)
+        fig.gca().add_artist(circle)
+
+        # Plot rectangular aperture (error region)
+        twenty_arcsec = aperture_inpixels(20., hdr)
+        square=plt.Rectangle((circx-twenty_arcsec * 0.5,
+                              circy-twenty_arcsec * 0.5),
+                             twenty_arcsec, twenty_arcsec,
+                             color='y', fill=False, lw=1.5)
+        fig.gca().add_artist(square)
+
+        # Create forced photometry label
+        if (forced_mag is not None) & (forced_magerr is not None) & (
+                forced_sn is not None) :
+            forcedlabel = r'${0:s} = {1:.2f} \pm {2:.2f} (SN={3:.1f})$'.format(
+                band+"_{forced}", forced_mag, forced_magerr, forced_sn)
+            ax.text(xx*0.01, yy * 0.14, forcedlabel, color='black',
+                    weight='bold', fontsize='large',
+                    bbox=dict(facecolor='white', alpha=0.6))
+
+        # Create catalog magnitude label
+        if (catmag is not None) & (catsn is not None) & (caterr is not None):
+            catlabel = r'${0:s} = {1:.2f} \pm {3:.2f}  (SN={2:.2f})$'.format(
+                band+"_{cat}", catmag, catsn, caterr)
+
+            ax.text(xx*0.02, yy * 0.03, catlabel, color='black', weight='bold',
+                    fontsize='large', bbox=dict(facecolor='white', alpha=0.6))
+
+        if title is not None:
+            plt.title(title)
+
+        plt.savefig(output, dpi=100)
+        print("Image ", output, " created")
+        plt.close('all')
+    else:
+        print("Couldn't create png. Object outside the image")
 
 
 #  OLD CODE FROM EDUARDO - NOT MODIFIED
@@ -684,6 +759,7 @@ def aperture_inpixels(aperture, hdr):
 
     return aperture
 
+
 def zscale(zscaleimg):
 
     z1 = np.amin(zscaleimg)
@@ -691,91 +767,8 @@ def zscale(zscaleimg):
 
     return z1, z2
 
-def make_png(img, ra, dec, size=20, aperture=2, band='filter', forced_mag='',
-             forced_magerr='', forced_sn='', output='stamp.png', title=''):
-    '''
-
-    make  a png file of the Xarcsec x Xarcsec stamp and plot
-    an 6arcsecs aperture
-
-    '''
-    data, hdr = fits.getdata(img, header=True)
-
-    wcs_img = wcs.WCS(hdr)
-    pixcrd = wcs_img.wcs_world2pix(ra, dec, 0)
-    positions = (np.float(pixcrd[0]), np.float(pixcrd[1]))
-
-    overlap = True
-    try:
-        img_stamp = Cutout2D(data, positions,
-                        size=size * u.arcsec, wcs=wcs_img)
-    except:
-        print("Source not in image")
-        overlap=False
-
-    if overlap:
-        img_stamp = img_stamp.data
-        (x,y) = img_stamp.shape
-
-    #if (x>20) & (y>20) & overlap:
-    if overlap:
-        plt.cla()
-        plt.clf()
-        fig = plt.figure()
-        ax = fig.add_subplot(111, aspect=1)
-
-        # norm = ImageNormalize(img_stamp, interval=ZScaleInterval())
-        # simg = ax.imshow(img_stamp, origin='lower', norm=norm, cmap='gray')
 
 
-        zscaleimg = img_stamp.copy()
-        #Not considering NanS
-        mask = np.isnan(zscaleimg)
-        median  = np.nanmedian(zscaleimg)
-
-        zscaleimg[mask] = median
-        z1, z2 = zscale(zscaleimg)
-            #print(z1, z2)
-
-        simg = ax.imshow(img_stamp, origin='lower', cmap='gray',
-                                    vmin=z1, vmax=z2)
-
-
-        fig.colorbar(simg)
-        (yy, xx) = img_stamp.shape
-        circx = (xx * 0.5) #+ 1
-        circy = (yy * 0.5) #+ 1
-        aper_pix = aperture_inpixels(aperture, hdr)
-        twenty_arcsec = aperture_inpixels(20., hdr)
-        circle=plt.Circle((circx, circy),
-                                 aper_pix, color='y', fill=False, lw=1.5)
-        fig.gca().add_artist(circle)
-        square=plt.Rectangle((circx-twenty_arcsec *0.5, circy-twenty_arcsec *0.5),
-                                 twenty_arcsec, twenty_arcsec, color='y', fill=False, lw=1.5)
-        fig.gca().add_artist(square)
-        #ax.scatter(circx, circy, c='y', marker='+', s=180)
-
-        forcedlabel = r'${0:s} = {1:.2f} \pm {2:.2f} (SN={3:.1f})$'.format(
-                                                 band+"_{forced}", forced_mag,
-            forced_magerr, forced_sn)
-        ax.text(xx*0.01, yy * 0.14, forcedlabel, color='black', weight='bold',
-         fontsize='large', bbox=dict(facecolor='white', alpha=0.6))
-
-        if (catmag is not None) & (catsn is not None):
-            catlabel = r'${0:s} = {1:.2f} \pm {3:.2f}  (SN={2:.2f})$'.format(
-                                                 band+"_{cat}", catmag, catsn,
-                caterr)
-            ax.text(xx*0.02, yy * 0.03, catlabel, color='black', weight='bold',
-         fontsize='large', bbox=dict(facecolor='white', alpha=0.6))
-
-
-        plt.title(title)
-
-        plt.savefig(output, dpi=100)
-        print("Image ", output, " created" )
-        plt.close('all')
-    else:
-        print("Couldn't create png. Object outside the image")
 
 
 def mag_err(noise_flux_ratio, verbose=True):
