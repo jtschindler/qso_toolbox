@@ -228,7 +228,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
                 else:
                     url = None
 
-            else :
+            else:
                 raise ValueError("Survey name not recognized: {} . \n "
                                  "Possible survey names include: desdr1".format(
                     survey))
@@ -286,7 +286,7 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_path,
             survey))
 
     if url is not None:
-        try :
+        try:
             download_image(url, image_name=img_name, image_path=image_path,
                        verbosity=verbosity)
         except:
@@ -375,8 +375,13 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
 
     fov = fov / 3600.
 
-    img_table = svc.search((ra,dec), (fov/np.cos(dec*np.pi/180), fov),
+    try:
+        img_table = svc.search((ra,dec), (fov/np.cos(dec*np.pi/180), fov),
                            verbosity=verbosity).to_table()
+    except:
+        img_table = svc.search((ra, dec),
+                               (fov / np.cos(dec * np.pi / 180), fov),
+                               verbosity=verbosity).table
 
     if verbosity>0:
         print("The full image list contains", len(img_table), "entries")
