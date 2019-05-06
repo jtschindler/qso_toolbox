@@ -360,8 +360,8 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
     """
 
     # Set the DES DR1 NOAO sia url
-    DEF_ACCESS_URL = "https://datalab.noao.edu/sia/des_dr1"
-    svc = sia.SIAService(DEF_ACCESS_URL)
+    def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+    svc = sia.SIAService(def_access_url)
 
     fov = fov / 3600.
 
@@ -426,7 +426,7 @@ def download_image(url, image_name, image_path, verbosity=0):
 
         if check_ok:
             file = datafile.read()
-            # fits_name = '{0}_desdr1_{1}.fits'.format(ps1name_i, args.bands.lower())
+
             output = open(image_path+'/'+image_name+'.fits', 'wb')
             output.write(file)
             output.close()
@@ -441,6 +441,141 @@ def download_image(url, image_name, image_path, verbosity=0):
         print(err)
         if verbosity > 0:
             print("Download of {} unsuccessful".format(image_name))
+
+
+def get_forced_photometry_mp(table, ra_col_name, dec_col_name, surveys,
+                          bands, apertures, fovs, image_path, n_jobs=8,
+                          auto_download=True,
+                          verbosity=0):
+    """
+
+    :param table:
+    :param ra_col_name:
+    :param dec_col_name:
+    :param surveys:
+    :param bands:
+    :param apertures:
+    :param fovs:
+    :param image_path:
+    :param n_jobs:
+    :param auto_download:
+    :param verbosity:
+    :return:
+    """
+
+    # Check if table is pandas DataFrame otherwise convert to one
+    table, format = check_if_table_is_pandas_dataframe(table)
+    # Add a column to the table specifying the object name used
+    # for the image name
+    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
+
+    for jdx, survey in enumerate(surveys):
+        band = bands[jdx]
+        aperture = apertures[jdx]
+        fov = fovs[jdx]
+
+        # Create list with image names
+        ra = table[ra_col_name].values
+        dec = table[dec_col_name].values
+        index = table.index
+
+        img_names = table.temp_object_name + "_" + survey + "_" + \
+                    band + "_fov" + '{:d}'.format(fov)
+
+        mp_args = list(zip(index,
+                           ra,
+                           dec,
+                           itertools.repeat(survey),
+                           itertools.repeat(band),
+                           itertools.repeat(aperture),
+                           itertools.repeat(fov),
+                           itertools.repeat(image_path),
+                           img_names,
+                           itertools.repeat(auto_download),
+                           itertools.repeat(verbosity)))
+
+        # Start multiprocessing pool
+        with mp.Pool(n_jobs) as pool:
+            results = pool.starmap(_mp_get_forced_photometry, mp_args)
+
+        print(results)
+
+        for result in results:
+            idx, mag, flux, sn, err, comment = result
+            table.loc[idx, 'forced_{}_mag_{}'.format(survey, band)] = mag
+            table.loc[idx, 'forced_{}_flux_{}'.format(survey, band)] = flux
+            table.loc[idx, 'forced_{}_sn_{}'.format(survey, band)] = sn
+            table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
+                err
+            table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
+                comment
+
+    table.drop(columns='temp_object_name')
+
+    table = convert_table_to_format(table, format)
+
+    return table
+
+
+def _mp_get_forced_photometry(index, ra, dec, survey,
+                          band, aperture, fov, image_path, img_name,
+                          auto_download=True,
+                          verbosity=0):
+
+    # Check if file is in folder
+    file_path = image_path + '/' + img_name + '.fits'
+    file_exists = os.path.isfile(file_path)
+
+    if file_exists is not True and auto_download is True:
+
+        if survey == "desdr1":
+            url = get_desdr1_deepest_image_url(ra,
+                                               dec,
+                                               fov=fov,
+                                               band=band,
+                                               verbosity=verbosity)
+
+        else:
+            raise ValueError("Survey name not recognized: {} . \n "
+                             "Possible survey names include: desdr1".format(
+                survey))
+
+        if url is not None:
+            download_image(url, image_name=img_name,
+                           image_path=image_path,
+                           verbosity=verbosity)
+
+            file_path = image_path + '/' + img_name + '.fits'
+            file_exists = os.path.isfile(file_path)
+
+    file_size_sufficient = False
+    if file_exists is True:
+        # Check if file is sufficient
+        file_size_sufficient = check_image_size(img_name,
+                                                file_path,
+                                                verbosity)
+
+    if file_exists is True and file_size_sufficient is True:
+        mag, flux, sn, err = \
+            calculate_forced_aperture_photometry(file_path,
+                                                 ra, dec, survey,
+                                                 aperture,
+                                                 verbosity=verbosity)
+        comment = 'ap_{}'.format(aperture)
+        return index, mag, flux, sn, err, comment
+
+    if file_exists is True and file_size_sufficient is not True:
+        comment = 'image_too_small'.format(aperture)
+
+        return index, np.nan, np.nan, np.nan, np.nan, comment
+
+    if file_exists is not True:
+        comment = 'image_not_available'.format(aperture)
+
+        return index, np.nan, np.nan, np.nan, np.nan, comment
+
 
 
 def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
@@ -630,7 +765,7 @@ def check_image_size(image_name, file_path, verbosity):
 
     shape = fits.getdata(file_path).shape
     min_axis = np.min(shape)
-    print ("Min Axis, ", min_axis)
+
     if min_axis < 50 and verbosity > 0:
         print("Minimum image dimension : {} (pixels)".format(min_axis))
         print("Too few pixels in one axis (<50). Skipping {}".format(
