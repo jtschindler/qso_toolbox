@@ -573,43 +573,50 @@ def calculate_forced_aperture_photometry(filepath, ra, dec, survey, aperture,
     wcs_img = wcs.WCS(header)
     pixel_coordinate = wcs_img.wcs_world2pix(ra, dec, 1)
 
-    # Get photometry
-    positions = (pixel_coordinate[0], pixel_coordinate[1])
-    apertures = CircularAperture(positions, r=aperture_pixel)
-    f = aperture_photometry(data, apertures)
-    flux = np.ma.masked_invalid(f['aperture_sum'])
+    # QUICKFIX to stop aperture photometry from crashing
+    try:
+        # Get photometry
+        positions = (pixel_coordinate[0], pixel_coordinate[1])
+        apertures = CircularAperture(positions, r=aperture_pixel)
+        f = aperture_photometry(data, apertures)
+        flux = np.ma.masked_invalid(f['aperture_sum'])
 
-    # Get the noise
-    rmsimg, mean_noise, empty_flux = get_noiseaper(data, aperture_pixel)
+        # Get the noise
+        rmsimg, mean_noise, empty_flux = get_noiseaper(data, aperture_pixel)
 
-    sn = flux[0] / rmsimg
+        sn = flux[0] / rmsimg
 
-    if verbosity > 0:
-        print("flux: ", flux[0], "sn: ", sn)
+        if verbosity > 0:
+            print("flux: ", flux[0], "sn: ", sn)
 
-    if sn < 0:
-        flux[0] = rmsimg
-        err = -1
-        mags = flux_to_magnitude(flux, survey)[0]
-    else:
-        mags = flux_to_magnitude(flux, survey)[0]
-        err = mag_err(1. / sn, verbose=False)
+        if sn < 0:
+            flux[0] = rmsimg
+            err = -1
+            mags = flux_to_magnitude(flux, survey)[0]
+        else:
+            mags = flux_to_magnitude(flux, survey)[0]
+            err = mag_err(1. / sn, verbose=False)
 
-    if verbosity > 0:
-        print("mag: ", mags)
+        if verbosity > 0:
+            print("mag: ", mags)
 
-    if mags is np.ma.masked:
-        mags = -999
-    if sn is np.ma.masked:
-        sn = np.nan
-    if err is np.ma.masked:
-        err = np.nan
-    if flux[0] is np.ma.masked:
-        flux = np.nan
-    else:
-        flux = flux[0]
+        if mags is np.ma.masked:
+            mags = -999
+        if sn is np.ma.masked:
+            sn = np.nan
+        if err is np.ma.masked:
+            err = np.nan
+        if flux[0] is np.ma.masked:
+            flux = np.nan
+        else:
+            flux = flux[0]
 
-    return mags, flux, sn, err
+        return mags, flux, sn, err
+
+    except ValueError:
+        return -999, np.nan, np.nan, np.nan
+
+
 
 
 def check_image_size(image_name, file_path, verbosity):
@@ -623,6 +630,7 @@ def check_image_size(image_name, file_path, verbosity):
 
     shape = fits.getdata(file_path).shape
     min_axis = np.min(shape)
+    print ("Min Axis, ", min_axis)
     if min_axis < 50 and verbosity > 0:
         print("Minimum image dimension : {} (pixels)".format(min_axis))
         print("Too few pixels in one axis (<50). Skipping {}".format(
@@ -805,7 +813,7 @@ def get_pixelscale(hdr):
 
 
 def get_noiseaper(data, radius):
-    print("estimating noise in aperture: ", radius)
+    # print("estimating noise in aperture: ", radius)
 
     sources_mask = make_source_mask(data, snr=2.5, npixels=3,
                                      dilate_size=15, filter_fwhm=4.5)
