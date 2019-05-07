@@ -500,7 +500,7 @@ def get_forced_photometry_mp(table, ra_col_name, dec_col_name, surveys,
         with mp.Pool(n_jobs) as pool:
             results = pool.starmap(_mp_get_forced_photometry, mp_args)
 
-        print(results)
+        
 
         for result in results:
             idx, mag, flux, sn, err, comment = result
@@ -523,6 +523,21 @@ def _mp_get_forced_photometry(index, ra, dec, survey,
                           band, aperture, fov, image_path, img_name,
                           auto_download=True,
                           verbosity=0):
+    """
+
+    :param index:
+    :param ra:
+    :param dec:
+    :param survey:
+    :param band:
+    :param aperture:
+    :param fov:
+    :param image_path:
+    :param img_name:
+    :param auto_download:
+    :param verbosity:
+    :return:
+    """
 
     # Check if file is in folder
     file_path = image_path + '/' + img_name + '.fits'
