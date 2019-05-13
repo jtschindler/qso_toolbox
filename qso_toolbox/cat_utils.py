@@ -4,6 +4,8 @@ import argparse
 import time
 import os
 
+import tarfile
+
 import pandas as pd
 
 import numpy as np
@@ -39,6 +41,8 @@ except ImportError:
 #SIA
 from pyvo.dal import sia
 
+import gzip
+import shutil
 
 from qso_toolbox import utils as ut
 
@@ -171,6 +175,11 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
     and the field of fiew. Each entry in the survey list corresponds to one
     entry in the passband and field of view lists.
 
+    The list of field of views will be accurately downloaded for desdr1. For
+    the download of the unWISE image cutouts the field of views will be
+    converted to number of pixels with npix = fov / 60. /4. * 100, with an
+    upper limit of 256 pixels.
+
     :param table: table object
         Input data table with at least RA and Decl. columns
     :param ra_col_name: string
@@ -201,11 +210,12 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
         survey = surveys[jdx]
         fov = fovs[jdx]
 
+
         for idx in table.index:
             ra = table[ra_col_name].values[idx]
             dec = table[dec_col_name].values[idx]
 
-            if survey == "desdr1":
+            if survey == "desdr1" and band in ["g", "r", "i", "z", "Y"]:
 
                 img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
                            band + "_fov" + '{:d}'.format(fov)
@@ -220,10 +230,34 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
                 else:
                     url = None
 
+            elif survey.split("-")[0] == "unwise" and band in ["w1", "w2",
+                                                               "w3", "w4"]:
+
+                # Hack to create npix from fov approximately
+                npix = fov/60./4. * 100
+
+                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                           band + "_fov" + '{:d}'.format(fov)
+
+                file_path = image_path + '/' + img_name + '.fits'
+                file_exists = os.path.isfile(file_path)
+
+                data_release = survey.split("-")[1]
+                wband = band[1]
+
+
+                if file_exists is not True:
+                    url = get_unwise_image_url(ra, dec, npix, wband,
+                                               data_release)
+                else:
+                    url = None
+
             else:
-                raise ValueError("Survey name not recognized: {} . \n "
-                                 "Possible survey names include: desdr1".format(
-                    survey))
+                raise ValueError("Survey and band name not recognized: {} {}. "
+                                 "\n "
+                                 "Possible survey names include: desdr1, "
+                                 "unwise-allwise, unwise-neo1, unwise-neo2, "
+                                 "unwise-neo3".format(survey, band))
 
             if url is not None:
                 download_image(url, image_name=img_name, image_path=image_path,
@@ -400,6 +434,106 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
     return url
 
 
+def get_unwise_image_url(ra, dec, npix, bands, data_release, filetype="image"):
+
+    # Maximum cutout size for unWISE cutouts is 256 pixel
+    if npix >=256:
+        npix=256
+
+
+    datatype = {"image":"&file_img_m=on",
+                "std":"&file_std_m=on",
+                "invvar":"&file_invvar_m=on"}
+
+    file_type = datatype[filetype]
+
+    basedr = dict(neo1="http://unwise.me/cutout_fits?version=neo1&",
+                neo2="http://unwise.me/cutout_fits?version=neo2&",
+                neo3="http://unwise.me/cutout_fits?version=neo3&",
+                 allwise="http://unwise.me/cutout_fits?version=allwise&")
+    base = basedr[data_release]
+    ra = "ra={:0}&".format(ra)
+    dec = "dec={:0}&".format(dec)
+    size = "size={:0}&".format(npix)
+    bands = "bands={0:s}".format(bands)
+
+    url = base + ra + dec + size + bands + file_type
+
+    return url
+
+
+def make_vsa_upload_file(table, ra_col_name, dec_col_name,
+                         filename='vsa_upload.csv'):
+    """
+
+    :param table:
+    :param ra_col_name:
+    :param dec_col_name:
+    :param filename:
+    :return:
+    """
+
+    table, format = check_if_table_is_pandas_dataframe(table)
+
+    table[[ra_col_name, dec_col_name]].to_csv(filename, index=False,
+                                              header=False)
+
+
+def download_vhs_wget_cutouts(wget_filename, image_path, survey_name='vhsdr6',
+                              fov=None, verbosity=0):
+    """
+
+    :param wget_filename:
+    :param image_path:
+    :param survey_name:
+    :param fov:
+    :param verbosity:
+    :return:
+    """
+
+    data = np.genfromtxt(wget_filename, delimiter=' ', dtype=("str"))
+
+    for idx, url in enumerate(data[:, 1]):
+
+        url = url[1:-1]
+        vhs_download_name = data[idx, 3]
+        vhs_name_list = vhs_download_name.split(".")[0].split("_")
+
+        # download_idx = vhs_name_list[0]
+        position_name = vhs_name_list[1]
+        band = vhs_name_list[2]
+
+        datafile = urlopen(url)
+        check_ok = datafile.msg == 'OK'
+
+        if check_ok:
+
+            file = datafile.read()
+            tmp_name = "tmp.gz"
+            tmp = open(tmp_name, "wb")
+            tmp.write(file)
+            tmp.close()
+
+            if fov is not None:
+                image_name = "J" + position_name + "_" + survey_name + "_" + \
+                             band + "_fov" + str(
+                    fov)
+            else:
+                image_name = "J" + position_name + "_" + survey_name + "_" + band
+
+            with gzip.open('tmp.gz', 'rb') as f_in:
+                with open(image_path + '/' + image_name + '.fits',
+                          'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+
+            if verbosity > 0:
+                print("Download of {} to {} completed".format(image_name,
+                                                              image_path))
+        else:
+            if verbosity > 0:
+                print("Download of {} unsuccessful".format(image_name))
+
+
 def download_image(url, image_name, image_path, verbosity=0):
     """Download an image cutout specified by the given url.
 
@@ -418,6 +552,8 @@ def download_image(url, image_name, image_path, verbosity=0):
     if not os.path.exists(image_path):
         os.makedirs(image_path)
 
+    survey = image_name.split("_")[1]
+
     # Try except clause for downloading the image
     try:
         datafile = urlopen(url)
@@ -425,14 +561,40 @@ def download_image(url, image_name, image_path, verbosity=0):
         check_ok = datafile.msg == 'OK'
 
         if check_ok:
-            file = datafile.read()
 
-            output = open(image_path+'/'+image_name+'.fits', 'wb')
-            output.write(file)
-            output.close()
-            if verbosity > 0:
-                print("Download of {} to {} completed".format(image_name,
-                                                              image_path))
+            if survey == 'desdr1':
+
+                file = datafile.read()
+
+                output = open(image_path+'/'+image_name+'.fits', 'wb')
+                output.write(file)
+                output.close()
+                if verbosity > 0:
+                    print("Download of {} to {} completed".format(image_name,
+                                                                  image_path))
+
+            elif survey == "unwise-allwise" or survey == "unwise-neo1" or \
+                    survey == "unwise-neo2" or survey == "unwise-neo3":
+
+                datafile = urlopen(url)
+                file = datafile.read()
+                tmp_name = "tmp.tar.gz"
+                tmp = open(tmp_name, "wb")
+                tmp.write(file)
+                tmp.close()
+
+                tar = tarfile.open(tmp_name, "r:gz")
+                file_name = tar.firstmember.name
+                untar = tar.extractfile(file_name)
+                untar = untar.read()
+
+                output = open(image_path + '/' + image_name + '.fits', 'wb')
+                output.write(untar)
+                output.close()
+                if verbosity > 0:
+                    print("Download of {} to {} completed".format(image_name,
+                                                                  image_path))
+
         else:
             if verbosity > 0:
                 print("Download of {} unsuccessful".format(image_name))
@@ -500,7 +662,7 @@ def get_forced_photometry_mp(table, ra_col_name, dec_col_name, surveys,
         with mp.Pool(n_jobs) as pool:
             results = pool.starmap(_mp_get_forced_photometry, mp_args)
 
-        
+
 
         for result in results:
             idx, mag, flux, sn, err, comment = result
@@ -573,12 +735,12 @@ def _mp_get_forced_photometry(index, ra, dec, survey,
                                                 verbosity)
 
     if file_exists is True and file_size_sufficient is True:
-        mag, flux, sn, err = \
+        mag, flux, sn, err, comment = \
             calculate_forced_aperture_photometry(file_path,
                                                  ra, dec, survey,
                                                  aperture,
                                                  verbosity=verbosity)
-        comment = 'ap_{}'.format(aperture)
+
         return index, mag, flux, sn, err, comment
 
     if file_exists is True and file_size_sufficient is not True:
@@ -669,7 +831,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
 
             if file_exists is True and file_size_sufficient is True:
 
-                mag, flux, sn, err = \
+                mag, flux, sn, err, comment = \
                     calculate_forced_aperture_photometry(file_path,
                                                          ra, dec, survey,
                                                          aperture,
@@ -680,7 +842,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                 table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
                     err
                 table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] =\
-                    'ap_{}'.format(aperture)
+                    comment
 
             if file_exists is True and file_size_sufficient is not True:
 
@@ -736,6 +898,8 @@ def calculate_forced_aperture_photometry(filepath, ra, dec, survey, aperture,
 
         sn = flux[0] / rmsimg
 
+        comment = 'ap_{}'.format(aperture)
+
         if verbosity > 0:
             print("flux: ", flux[0], "sn: ", sn)
 
@@ -752,6 +916,7 @@ def calculate_forced_aperture_photometry(filepath, ra, dec, survey, aperture,
 
         if mags is np.ma.masked:
             mags = -999
+            comment = 'masked'
         if sn is np.ma.masked:
             sn = np.nan
         if err is np.ma.masked:
@@ -761,10 +926,10 @@ def calculate_forced_aperture_photometry(filepath, ra, dec, survey, aperture,
         else:
             flux = flux[0]
 
-        return mags, flux, sn, err
+        return mags, flux, sn, err, comment
 
     except ValueError:
-        return -999, np.nan, np.nan, np.nan
+        return -999, np.nan, np.nan, np.nan, 'crashed'
 
 
 
@@ -971,10 +1136,10 @@ def get_noiseaper(data, radius):
 
     N=5100
     ny, nx = data.shape
-    x1= np.int(nx * 0.09)
+    x1 = np.int(nx * 0.09)
     x2 = np.int(nx * 0.91)
-    y1= np.int(ny * 0.09)
-    y2= np.int(ny * 0.91)
+    y1 = np.int(ny * 0.09)
+    y2 = np.int(ny * 0.91)
     xx = np.random.uniform(x1, x2, N)
     yy = np.random.uniform(y1, y2, N)
 
