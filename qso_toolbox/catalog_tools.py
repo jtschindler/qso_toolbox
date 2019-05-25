@@ -49,6 +49,7 @@ from qso_toolbox import utils as ut
 import itertools
 import multiprocessing as mp
 
+from astropy.nddata.utils import Cutout2D
 
 
 # copied from http://docs.astropy.org/en/stable/_modules/astropy/io/fits/column.html
@@ -158,7 +159,7 @@ def convert_table_to_format(table, format):
     if format == 'astropy_table':
         return Table.from_pandas(table)
     elif format == 'fits_rec':
-        print ('Warning: You entered a fits record array. However, this code '
+        print('Warning: You entered a fits record array. However, this code '
                'does not support this data type. Your table is returned as an'
                'astropy table!')
         return Table.from_pandas(table)
@@ -499,39 +500,49 @@ def download_vhs_wget_cutouts(wget_filename, image_path, survey_name='vhsdr6',
         vhs_download_name = data[idx, 3]
         vhs_name_list = vhs_download_name.split(".")[0].split("_")
 
-        # download_idx = vhs_name_list[0]
         position_name = vhs_name_list[1]
         band = vhs_name_list[2]
 
-        datafile = urlopen(url)
-        check_ok = datafile.msg == 'OK'
+        # Create image name
+        if fov is not None:
+            image_name = "J" + position_name + "_" + survey_name + "_" + \
+                         band + "_fov" + str(fov)
+        else:
+            image_name = "J" + position_name + "_" + survey_name + "_" + band
 
-        if check_ok:
+        # Check if file is in folder
+        file_path = image_path + '/' + image_name + '.fits'
+        file_exists = os.path.isfile(file_path)
 
-            file = datafile.read()
-            tmp_name = "tmp.gz"
-            tmp = open(tmp_name, "wb")
-            tmp.write(file)
-            tmp.close()
-
-            if fov is not None:
-                image_name = "J" + position_name + "_" + survey_name + "_" + \
-                             band + "_fov" + str(
-                    fov)
-            else:
-                image_name = "J" + position_name + "_" + survey_name + "_" + band
-
-            with gzip.open('tmp.gz', 'rb') as f_in:
-                with open(image_path + '/' + image_name + '.fits',
-                          'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-
+        if file_exists:
             if verbosity > 0:
-                print("Download of {} to {} completed".format(image_name,
+                print("Image of {} already exists in {}.".format(image_name,
                                                               image_path))
         else:
-            if verbosity > 0:
-                print("Download of {} unsuccessful".format(image_name))
+            datafile = urlopen(url)
+            check_ok = datafile.msg == 'OK'
+
+            if check_ok:
+
+                file = datafile.read()
+                tmp_name = "tmp.gz"
+                tmp = open(tmp_name, "wb")
+                tmp.write(file)
+                tmp.close()
+
+
+
+                with gzip.open('tmp.gz', 'rb') as f_in:
+                    with open(image_path + '/' + image_name + '.fits',
+                              'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+
+                if verbosity > 0:
+                    print("Download of {} to {} completed".format(image_name,
+                                                                  image_path))
+            else:
+                if verbosity > 0:
+                    print("Download of {} unsuccessful".format(image_name))
 
 
 def download_image(url, image_name, image_path, verbosity=0):
