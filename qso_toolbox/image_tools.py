@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+
+import os
 import astropy.units as u
 from astropy.utils.console import ProgressBar
 from astropy.io import fits, ascii
@@ -10,6 +12,12 @@ from astropy.io import ascii, fits
 
 import pandas as pd
 
+from photutils import aperture_photometry, CircularAperture
+from photutils import Background2D, MedianBackground, make_source_mask
+
+import itertools
+import multiprocessing as mp
+
 import numpy as np
 
 import matplotlib as mpl
@@ -19,8 +27,14 @@ import matplotlib.pyplot as plt
 import glob
 
 from qso_toolbox import utils as ut
+from qso_toolbox import catalog_tools as ct
 
 import math
+
+
+# ------------------------------------------------------------------------------
+#  Plotting functions for image_cutouts
+# ------------------------------------------------------------------------------
 
 
 def make_png(filename, ra, dec, size=20, aperture=2, band='filter',
@@ -148,6 +162,29 @@ def make_mult_png_fig(ra, dec, surveys, bands,
                   forced_mag_list=None, forced_magerr_list=None,
                   forced_sn_list=None, n_col=3,
                   n_sigma=3, color_map_name='viridis', verbosity=0):
+    """Create figure to plot cutouts for one source in all specified surveys
+    and bands.
+
+    :param ra:
+    :param dec:
+    :param surveys:
+    :param bands:
+    :param fovs:
+    :param apertures:
+    :param square_sizes:
+    :param image_path:
+    :param mag_list:
+    :param magerr_list:
+    :param sn_list:
+    :param forced_mag_list:
+    :param forced_magerr_list:
+    :param forced_sn_list:
+    :param n_col:
+    :param n_sigma:
+    :param color_map_name:
+    :param verbosity:
+    :return:
+    """
 
 
     n_images = len(surveys)
@@ -177,6 +214,31 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
                   forced_mag_list=None, forced_magerr_list=None,
                   forced_sn_list=None,
                   n_sigma=3, color_map_name='viridis', verbosity=0):
+    """ Create axes components to plot one source in all specified surveys
+    and bands.
+
+    :param fig:
+    :param n_row:
+    :param n_col:
+    :param ra:
+    :param dec:
+    :param surveys:
+    :param bands:
+    :param fovs:
+    :param apertures:
+    :param square_sizes:
+    :param image_path:
+    :param mag_list:
+    :param magerr_list:
+    :param sn_list:
+    :param forced_mag_list:
+    :param forced_magerr_list:
+    :param forced_sn_list:
+    :param n_sigma:
+    :param color_map_name:
+    :param verbosity:
+    :return:
+    """
 
     for idx, survey in enumerate(surveys):
         band = bands[idx]
@@ -233,8 +295,7 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
                 data, hdr = fits.getdata(filename, header=True)
                 file_found = True
 
-
-        if file_found == True:
+        if file_found:
             if verbosity > 0:
                 print("Opened {} with a fov of {} "
                       "arcseconds".format(filename, file_fov))
@@ -250,7 +311,6 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
             wcs_img = wcs.WCS(hdr)
             axs = fig.add_subplot(n_row, n_col, idx + 1, projection=wcs_img)
 
-            pixcrd = wcs_img.wcs_world2pix(ra, dec, 0)
             pixcrd = wcs_img.wcs_world2pix(ra, dec, 0)
             positions = (np.float(pixcrd[0]), np.float(pixcrd[1]))
             overlap = True
@@ -287,7 +347,6 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
             elif survey.split("-")[0] == "unwise":
                 axs.invert_xaxis()
 
-            # fig.colorbar(simg, cax=axs, orientation='vertical')
 
             # Plot circular aperture (forced photometry flux)
             (yy, xx) = img_stamp.shape
@@ -348,17 +407,383 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
 
             axs.set_title(survey + " " + band)
 
-
-
     return fig
 
 
-def zscale(zscaleimg):
+# ------------------------------------------------------------------------------
+#  Determine forced photometry for sources in cutouts.
+# ------------------------------------------------------------------------------
 
-    z1 = np.amin(zscaleimg)
-    z2 = np.amax(zscaleimg)
 
-    return z1, z2
+def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
+                          bands, apertures, fovs, image_path,
+                          auto_download=True,
+                          verbosity=0):
+    """
+
+    :param table:
+    :param ra_col_name:
+    :param dec_col_name:
+    :param surveys:
+    :param bands:
+    :param apertures:
+    :param fovs:
+    :param image_path:
+    :param auto_download: Boolean
+    :param verbosity:
+    :return:
+    """
+
+    # Check if table is pandas DataFrame otherwise convert to one
+    table, format = ct.check_if_table_is_pandas_dataframe(table)
+    # Add a column to the table specifying the object name used
+    # for the image name
+    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
+
+    for jdx, survey in enumerate(surveys):
+
+        band = bands[jdx]
+        aperture = apertures[jdx]
+        fov = fovs[jdx]
+
+        for idx in table.index:
+
+            ra = table[ra_col_name].values[idx]
+            dec = table[dec_col_name].values[idx]
+
+            img_name = table.temp_object_name[idx]+"_"+survey+"_" + \
+                       band+"_fov"+'{:d}'.format(fov)
+
+            # Check if file is in folder
+            file_path = image_path + '/' + img_name + '.fits'
+            file_exists = os.path.isfile(file_path)
+
+            if file_exists is not True and auto_download is True:
+
+                if survey == "desdr1":
+                    url = ct.get_desdr1_deepest_image_url(ra,
+                                                       dec,
+                                                       fov=fov,
+                                                       band=band,
+                                                       verbosity=verbosity)
+
+                else:
+                    raise ValueError("Survey name not recognized: {} . \n "
+                                     "Possible survey names include: desdr1".format(
+                        survey))
+
+                if url is not None:
+                    ct.download_image(url, image_name=img_name,
+                                   image_path=image_path,
+                                   verbosity=verbosity)
+
+                    file_path = image_path + '/' + img_name + '.fits'
+                    file_exists = os.path.isfile(file_path)
+
+            file_size_sufficient = False
+            if file_exists is True:
+                # Check if file is sufficient
+                file_size_sufficient = check_image_size(img_name,
+                                                        file_path,
+                                                        verbosity)
+
+            if file_exists is True and file_size_sufficient is True:
+
+                mag, flux, sn, err, comment = \
+                    calculate_forced_aperture_photometry(file_path,
+                                                         ra, dec, survey,
+                                                         aperture,
+                                                         verbosity=verbosity)
+                table.loc[idx, 'forced_{}_mag_{}'.format(survey, band)] = mag
+                table.loc[idx, 'forced_{}_flux_{}'.format(survey, band)] = flux
+                table.loc[idx, 'forced_{}_sn_{}'.format(survey, band)] = sn
+                table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
+                    err
+                table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] =\
+                    comment
+
+            if file_exists is True and file_size_sufficient is not True:
+
+                table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
+                    'image_too_small'.format(aperture)
+
+            if file_exists is not True:
+
+                table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
+                    'image_not_available'.format(aperture)
+
+    table.drop(columns='temp_object_name')
+
+    table = ct.convert_table_to_format(table, format)
+
+    return table
+
+
+def get_forced_photometry_mp(table, ra_col_name, dec_col_name, surveys,
+                          bands, apertures, fovs, image_path, n_jobs=8,
+                          auto_download=True,
+                          verbosity=0):
+    """
+
+    :param table:
+    :param ra_col_name:
+    :param dec_col_name:
+    :param surveys:
+    :param bands:
+    :param apertures:
+    :param fovs:
+    :param image_path:
+    :param n_jobs:
+    :param auto_download:
+    :param verbosity:
+    :return:
+    """
+
+    # Check if table is pandas DataFrame otherwise convert to one
+    table, format = ct.check_if_table_is_pandas_dataframe(table)
+    # Add a column to the table specifying the object name used
+    # for the image name
+    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
+
+    for jdx, survey in enumerate(surveys):
+        band = bands[jdx]
+        aperture = apertures[jdx]
+        fov = fovs[jdx]
+
+        # Create list with image names
+        ra = table[ra_col_name].values
+        dec = table[dec_col_name].values
+        index = table.index
+
+        img_names = table.temp_object_name + "_" + survey + "_" + \
+                    band + "_fov" + '{:d}'.format(fov)
+
+        mp_args = list(zip(index,
+                           ra,
+                           dec,
+                           itertools.repeat(survey),
+                           itertools.repeat(band),
+                           itertools.repeat(aperture),
+                           itertools.repeat(fov),
+                           itertools.repeat(image_path),
+                           img_names,
+                           itertools.repeat(auto_download),
+                           itertools.repeat(verbosity)))
+
+        # Start multiprocessing pool
+        with mp.Pool(n_jobs) as pool:
+            results = pool.starmap(_mp_get_forced_photometry, mp_args)
+
+
+
+        for result in results:
+            idx, mag, flux, sn, err, comment = result
+            table.loc[idx, 'forced_{}_mag_{}'.format(survey, band)] = mag
+            table.loc[idx, 'forced_{}_flux_{}'.format(survey, band)] = flux
+            table.loc[idx, 'forced_{}_sn_{}'.format(survey, band)] = sn
+            table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
+                err
+            table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
+                comment
+
+    table.drop(columns='temp_object_name')
+
+    table = ct.convert_table_to_format(table, format)
+
+    return table
+
+
+def _mp_get_forced_photometry(index, ra, dec, survey,
+                          band, aperture, fov, image_path, img_name,
+                          auto_download=True,
+                          verbosity=0):
+    """
+
+    :param index:
+    :param ra:
+    :param dec:
+    :param survey:
+    :param band:
+    :param aperture:
+    :param fov:
+    :param image_path:
+    :param img_name:
+    :param auto_download:
+    :param verbosity:
+    :return:
+    """
+
+    # Check if file is in folder
+    file_path = image_path + '/' + img_name + '.fits'
+    file_exists = os.path.isfile(file_path)
+
+    if file_exists is not True and auto_download is True:
+
+        if survey == "desdr1":
+            url = ct.get_desdr1_deepest_image_url(ra,
+                                               dec,
+                                               fov=fov,
+                                               band=band,
+                                               verbosity=verbosity)
+
+        else:
+            raise ValueError("Survey name not recognized: {} . \n "
+                             "Possible survey names include: desdr1".format(
+                survey))
+
+        if url is not None:
+            ct.download_image(url, image_name=img_name,
+                           image_path=image_path,
+                           verbosity=verbosity)
+
+            file_path = image_path + '/' + img_name + '.fits'
+            file_exists = os.path.isfile(file_path)
+
+    file_size_sufficient = False
+    if file_exists is True:
+        # Check if file is sufficient
+        file_size_sufficient = check_image_size(img_name,
+                                                file_path,
+                                                verbosity)
+
+    if file_exists is True and file_size_sufficient is True:
+        mag, flux, sn, err, comment = \
+            calculate_forced_aperture_photometry(file_path,
+                                                 ra, dec, survey,
+                                                 aperture,
+                                                 verbosity=verbosity)
+
+        return index, mag, flux, sn, err, comment
+
+    if file_exists is True and file_size_sufficient is not True:
+        comment = 'image_too_small'.format(aperture)
+
+        return index, np.nan, np.nan, np.nan, np.nan, comment
+
+    if file_exists is not True:
+        comment = 'image_not_available'.format(aperture)
+
+        return index, np.nan, np.nan, np.nan, np.nan, comment
+
+
+def calculate_forced_aperture_photometry(filepath, ra, dec, survey, aperture,
+                                         verbosity=0):
+    """
+
+    :param filepath:
+    :param ra:
+    :param dec:
+    :param survey:
+    :param aperture:
+    :param verbosity:
+    :return:
+    """
+
+    # Open the fits image
+    data, header = fits.getdata(filepath, header=True)
+
+    # Convert radius from arcseconds to pixel
+    pixelscale = get_pixelscale(header)
+    aperture_pixel = aperture / pixelscale  # pixels
+
+    # Transform coordinates of target position to pixel scale
+    wcs_img = wcs.WCS(header)
+    pixel_coordinate = wcs_img.wcs_world2pix(ra, dec, 1)
+
+    # QUICKFIX to stop aperture photometry from crashing
+    try:
+        # Get photometry
+        positions = (pixel_coordinate[0], pixel_coordinate[1])
+        apertures = CircularAperture(positions, r=aperture_pixel)
+        f = aperture_photometry(data, apertures)
+        flux = np.ma.masked_invalid(f['aperture_sum'])
+
+        # Get the noise
+        rmsimg, mean_noise, empty_flux = get_noiseaper(data, aperture_pixel)
+
+        sn = flux[0] / rmsimg
+
+        comment = 'ap_{}'.format(aperture)
+
+        if verbosity > 0:
+            print("flux: ", flux[0], "sn: ", sn)
+
+        if sn < 0:
+            flux[0] = rmsimg
+            err = -1
+            mags = flux_to_magnitude(flux, survey)[0]
+        else:
+            mags = flux_to_magnitude(flux, survey)[0]
+            err = mag_err(1. / sn, verbose=False)
+
+        if verbosity > 0:
+            print("mag: ", mags)
+
+        if mags is np.ma.masked:
+            mags = -999
+            comment = 'masked'
+        if sn is np.ma.masked:
+            sn = np.nan
+        if err is np.ma.masked:
+            err = np.nan
+        if flux[0] is np.ma.masked:
+            flux = np.nan
+        else:
+            flux = flux[0]
+
+        return mags, flux, sn, err, comment
+
+    except ValueError:
+        return -999, np.nan, np.nan, np.nan, 'crashed'
+
+
+# ------------------------------------------------------------------------------
+#  Image utility functions for forced photometry
+#  (mostly from Eduardo and not modified)
+# ------------------------------------------------------------------------------
+
+
+def check_image_size(image_name, file_path, verbosity):
+    """
+
+    :param image_name:
+    :param file_path:
+    :param verbosity:
+    :return:
+    """
+
+    shape = fits.getdata(file_path).shape
+    min_axis = np.min(shape)
+
+    if min_axis < 50 and verbosity > 0:
+        print("Minimum image dimension : {} (pixels)".format(min_axis))
+        print("Too few pixels in one axis (<50). Skipping {}".format(
+            image_name))
+
+    if min_axis < 50:
+        return False
+    else:
+        return True
+
+
+def flux_to_magnitude(flux, survey):
+    """
+
+    :param flux:
+    :param survey:
+    :return:
+    """
+    if survey == "desdr1":
+        zpt = 30.
+    else:
+        raise ValueError("Survey name not recgonized: {}".format(survey))
+
+    return -2.5 * np.log10(flux) + zpt
+
 
 def aperture_inpixels(aperture, hdr):
     '''
@@ -368,6 +793,7 @@ def aperture_inpixels(aperture, hdr):
     aperture /= pixelscale #pixels
 
     return aperture
+
 
 def get_pixelscale(hdr):
     '''
@@ -386,6 +812,88 @@ def get_pixelscale(hdr):
     scale = 0.5 * (np.abs(CD1) + np.abs(CD2)) * 3600
 
     return scale
+
+
+def mag_err(noise_flux_ratio, verbose=True):
+    '''
+    Calculates the magnitude error from the input noise_flux_ratio
+    which is basically the inverse of the Signal-to-Noise ratio
+    '''
+    err = (2.5 / np.log(10)) * noise_flux_ratio
+    if verbose:
+        print(err)
+    return err
+
+
+def get_noiseaper(data, radius):
+    # print("estimating noise in aperture: ", radius)
+
+    sources_mask = make_source_mask(data, snr=2.5, npixels=3,
+                                     dilate_size=15, filter_fwhm=4.5)
+
+
+    N=5100
+    ny, nx = data.shape
+    x1 = np.int(nx * 0.09)
+    x2 = np.int(nx * 0.91)
+    y1 = np.int(ny * 0.09)
+    y2 = np.int(ny * 0.91)
+    xx = np.random.uniform(x1, x2, N)
+    yy = np.random.uniform(y1, y2, N)
+
+    mask = sources_mask[np.int_(yy), np.int_(xx)]
+    xx= xx[~mask]
+    yy = yy[~mask]
+
+    positions = (xx, yy)
+    apertures = CircularAperture(positions, r=radius)
+    f = aperture_photometry(data, apertures, mask=sources_mask)
+    f = np.ma.masked_invalid(f['aperture_sum'])
+    m1 = np.isfinite(f) #& (f!=0)
+    empty_fluxes = f[m1]
+    emptyapmeanflux, emptyapsigma = gaussian_fit_to_histogram(empty_fluxes)
+
+    return emptyapsigma, emptyapmeanflux, empty_fluxes
+
+
+def gaussian_fit_to_histogram(dataset):
+    """ fit a gaussian function to the histogram of the given dataset
+    :param dataset: a series of measurements that is presumed to be normally
+       distributed, probably around a mean that is close to zero.
+    :return: mean, mu and width, sigma of the gaussian model fit.
+
+    Taken from
+
+    https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/photfunctions.py
+    """
+    def gauss(x, mu, sigma):
+        return np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
+
+    if np.ndim(dataset) == 2:
+        musigma = np.array([gaussian_fit_to_histogram(dataset[:, i])
+                            for i in range(np.shape(dataset)[1])])
+        return musigma[:, 0], musigma[:, 1]
+
+    dataset = dataset[np.isfinite(dataset)]
+    ndatapoints = len(dataset)
+    stdmean, stdmedian, stderr, = sigma_clipped_stats(dataset, sigma=5.0)
+    nhistbins = max(10, int(ndatapoints / 20))
+    histbins = np.linspace(stdmedian - 5 * stderr, stdmedian + 5 * stderr,
+                           nhistbins)
+    yhist, xhist = np.histogram(dataset, bins=histbins)
+    binwidth = np.mean(np.diff(xhist))
+    binpeak = float(np.max(yhist))
+    param0 = [stdmedian, stderr]  # initial guesses for gaussian mu and sigma
+    xval = xhist[:-1] + (binwidth / 2)
+    yval = yhist / binpeak
+    try:
+        minparam, cov = curve_fit(gauss, xval, yval, p0=param0)
+    except RuntimeError:
+        minparam = -99, -99
+    mumin, sigmamin = minparam
+    return mumin, sigmamin
+
+
 
 
 

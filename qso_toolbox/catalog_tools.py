@@ -52,6 +52,13 @@ import multiprocessing as mp
 from astropy.nddata.utils import Cutout2D
 
 
+
+
+
+# ------------------------------------------------------------------------------
+#  Input table manipulation
+# ------------------------------------------------------------------------------
+
 # copied from http://docs.astropy.org/en/stable/_modules/astropy/io/fits/column.html
 # L: Logical (Boolean)
 # B: Unsigned Byte
@@ -66,8 +73,6 @@ from astropy.nddata.utils import Cutout2D
 fits_to_numpy = {'L': 'i1', 'B': 'u1', 'I': 'i2', 'J': 'i4', 'K': 'i8',
                 'E': 'f4',
               'D': 'f8', 'C': 'c8', 'M': 'c16', 'A': 'a'}
-
-
 
 
 def fits_to_hdf(filename):
@@ -121,6 +126,7 @@ def fits_to_hdf(filename):
     df.to_hdf(filename+'.hdf5', 'data', format='table')
 
 
+
 def check_if_table_is_pandas_dataframe(table):
     """
     Check whether the supplied table is a pandas Dataframe and convert to it
@@ -166,6 +172,10 @@ def convert_table_to_format(table, format):
     else:
         return table
 
+
+# ------------------------------------------------------------------------------
+#  Download catalog images
+# ------------------------------------------------------------------------------
 
 def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
                    fovs,
@@ -265,6 +275,58 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
                                verbosity=verbosity)
 
 
+def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
+                      image_path, fovs, n_jobs=2, verbosity=0):
+    """
+
+    :param table: table object
+        Input data table with at least RA and Decl. columns
+    :param ra_col_name: string
+        Exact string for the RA column in the table
+    :param dec_col_name: string
+        Exact string for the Decl. column in the table
+    :param surveys: list of strings
+        List of survey names, length has to be equal to bands and fovs
+    :param bands: list of strings
+        List of band names, length has to be equal to surveys and fovs
+    :param image_path: string
+        Path to the directory where all the images will be stored
+    :param fovs: list of floats
+        Field of view in arcseconds, length has be equal to surveys and bands
+    :param n_jobs : integer
+        Number of cores to be used
+    :param verbosity:
+        Verbosity > 0 will print verbose statements during the execution
+    :return: None
+    """
+
+    table, table_format = check_if_table_is_pandas_dataframe(table)
+
+    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
+                                                 table[dec_col_name].values,
+                                                 epoch="J")
+
+    for jdx, band in enumerate(bands):
+
+        survey = surveys[jdx]
+        fov = fovs[jdx]
+
+        mp_args = list(zip(table[ra_col_name].values,
+                           table[dec_col_name].values,
+                           itertools.repeat(survey),
+                           itertools.repeat(band),
+                           itertools.repeat(fov),
+                           itertools.repeat(image_path),
+                           table['temp_object_name'].values,
+                           itertools.repeat(verbosity)))
+
+
+        # alternative idea: get all urls first and then download them.
+
+        with mp.Pool(n_jobs) as pool:
+            pool.starmap(_mp_photometry_download, mp_args)
+
+
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_path,
                             temp_object_name, verbosity):
     """Download one photometric image.
@@ -319,230 +381,6 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_path,
         except:
             # if verbosity >0:
             print('Download error')
-
-
-def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
-                      image_path, fovs, n_jobs=2, verbosity=0):
-    """
-
-    :param table: table object
-        Input data table with at least RA and Decl. columns
-    :param ra_col_name: string
-        Exact string for the RA column in the table
-    :param dec_col_name: string
-        Exact string for the Decl. column in the table
-    :param surveys: list of strings
-        List of survey names, length has to be equal to bands and fovs
-    :param bands: list of strings
-        List of band names, length has to be equal to surveys and fovs
-    :param image_path: string
-        Path to the directory where all the images will be stored
-    :param fovs: list of floats
-        Field of view in arcseconds, length has be equal to surveys and bands
-    :param n_jobs : integer
-        Number of cores to be used
-    :param verbosity:
-        Verbosity > 0 will print verbose statements during the execution
-    :return: None
-    """
-
-    table, table_format = check_if_table_is_pandas_dataframe(table)
-
-    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                                 table[dec_col_name].values,
-                                                 epoch="J")
-
-    for jdx, band in enumerate(bands):
-
-        survey = surveys[jdx]
-        fov = fovs[jdx]
-
-        mp_args = list(zip(table[ra_col_name].values,
-                           table[dec_col_name].values,
-                           itertools.repeat(survey),
-                           itertools.repeat(band),
-                           itertools.repeat(fov),
-                           itertools.repeat(image_path),
-                           table['temp_object_name'].values,
-                           itertools.repeat(verbosity)))
-
-
-        # idea: get all urls first and then download them.
-
-        with mp.Pool(n_jobs) as pool:
-            pool.starmap(_mp_photometry_download, mp_args)
-
-
-
-
-
-
-def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
-    """Returns the url from where the DES DR1 cutout can be downloaded.
-
-    :param ra: float
-        Right ascension of target
-    :param dec: float
-        Declination of target
-    :param fov: float
-        Field of view in arcseconds
-    :param band: str
-        Passband of the image
-    :param verbosity: int
-        Verbosity > 0 will print verbose statements during the execution
-    :return: str
-        Returns the url to the DES DR1 image cutout
-    """
-
-    # Set the DES DR1 NOAO sia url
-    def_access_url = "https://datalab.noao.edu/sia/des_dr1"
-    svc = sia.SIAService(def_access_url)
-
-    fov = fov / 3600.
-
-    try:
-        img_table = svc.search((ra, dec), (fov/np.cos(dec*np.pi/180), fov),
-                               verbosity=verbosity).to_table()
-    except:
-        img_table = svc.search((ra, dec),
-                               (fov / np.cos(dec * np.pi / 180), fov),
-                               verbosity=verbosity).table
-
-    if verbosity > 0:
-        print("The full image list contains", len(img_table), "entries")
-
-    sel_band = img_table['obs_bandpass'].astype(str) == band
-
-    sel = sel_band & ((img_table['proctype'].astype(str) == 'Stack') &
-                      (img_table['prodtype'].astype(str) == 'image'))
-
-    # basic selection
-    table = img_table[sel]  # select
-
-    if len(table) > 0:
-        row = table[np.argmax(table['exptime'].data.data.astype(
-            'float'))]  # pick image with longest exposure time
-        url = row['access_url'].decode()  # get the download URL
-
-        if verbosity > 0:
-            print('downloading deepest stacked image...')
-
-    else:
-        if verbosity > 0:
-            print('No image available.')
-        url = None
-
-    return url
-
-
-def get_unwise_image_url(ra, dec, npix, bands, data_release, filetype="image"):
-
-    # Maximum cutout size for unWISE cutouts is 256 pixel
-    if npix >=256:
-        npix=256
-
-
-    datatype = {"image":"&file_img_m=on",
-                "std":"&file_std_m=on",
-                "invvar":"&file_invvar_m=on"}
-
-    file_type = datatype[filetype]
-
-    basedr = dict(neo1="http://unwise.me/cutout_fits?version=neo1&",
-                neo2="http://unwise.me/cutout_fits?version=neo2&",
-                neo3="http://unwise.me/cutout_fits?version=neo3&",
-                 allwise="http://unwise.me/cutout_fits?version=allwise&")
-    base = basedr[data_release]
-    ra = "ra={:0}&".format(ra)
-    dec = "dec={:0}&".format(dec)
-    size = "size={:0}&".format(npix)
-    bands = "bands={0:s}".format(bands)
-
-    url = base + ra + dec + size + bands + file_type
-
-    return url
-
-
-def make_vsa_upload_file(table, ra_col_name, dec_col_name,
-                         filename='vsa_upload.csv'):
-    """
-
-    :param table:
-    :param ra_col_name:
-    :param dec_col_name:
-    :param filename:
-    :return:
-    """
-
-    table, format = check_if_table_is_pandas_dataframe(table)
-
-    table[[ra_col_name, dec_col_name]].to_csv(filename, index=False,
-                                              header=False)
-
-
-def download_vhs_wget_cutouts(wget_filename, image_path, survey_name='vhsdr6',
-                              fov=None, verbosity=0):
-    """
-
-    :param wget_filename:
-    :param image_path:
-    :param survey_name:
-    :param fov:
-    :param verbosity:
-    :return:
-    """
-
-    data = np.genfromtxt(wget_filename, delimiter=' ', dtype=("str"))
-
-    for idx, url in enumerate(data[:, 1]):
-
-        url = url[1:-1]
-        vhs_download_name = data[idx, 3]
-        vhs_name_list = vhs_download_name.split(".")[0].split("_")
-
-        position_name = vhs_name_list[1]
-        band = vhs_name_list[2]
-
-        # Create image name
-        if fov is not None:
-            image_name = "J" + position_name + "_" + survey_name + "_" + \
-                         band + "_fov" + str(fov)
-        else:
-            image_name = "J" + position_name + "_" + survey_name + "_" + band
-
-        # Check if file is in folder
-        file_path = image_path + '/' + image_name + '.fits'
-        file_exists = os.path.isfile(file_path)
-
-        if file_exists:
-            if verbosity > 0:
-                print("Image of {} already exists in {}.".format(image_name,
-                                                              image_path))
-        else:
-            datafile = urlopen(url)
-            check_ok = datafile.msg == 'OK'
-
-            if check_ok:
-
-                file = datafile.read()
-                tmp_name = "tmp.gz"
-                tmp = open(tmp_name, "wb")
-                tmp.write(file)
-                tmp.close()
-
-
-
-                with gzip.open('tmp.gz', 'rb') as f_in:
-                    with open(image_path + '/' + image_name + '.fits',
-                              'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
-
-                if verbosity > 0:
-                    print("Download of {} to {} completed".format(image_name,
-                                                                  image_path))
-            else:
-                if verbosity > 0:
-                    print("Download of {} unsuccessful".format(image_name))
 
 
 def download_image(url, image_name, image_path, verbosity=0):
@@ -615,374 +453,211 @@ def download_image(url, image_name, image_path, verbosity=0):
         if verbosity > 0:
             print("Download of {} unsuccessful".format(image_name))
 
+# ------------------------------------------------------------------------------
+#  Catalog specific URL construction
+# ------------------------------------------------------------------------------
 
-def get_forced_photometry_mp(table, ra_col_name, dec_col_name, surveys,
-                          bands, apertures, fovs, image_path, n_jobs=8,
-                          auto_download=True,
-                          verbosity=0):
+
+def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
+    """Return the url from where the DES DR1 cutout can be downloaded.
+
+    :param ra: float
+        Right ascension of target
+    :param dec: float
+        Declination of target
+    :param fov: float
+        Field of view in arcseconds
+    :param band: str
+        Passband of the image
+    :param verbosity: int
+        Verbosity > 0 will print verbose statements during the execution
+    :return: str
+        Returns the url to the DES DR1 image cutout
     """
 
-    :param table:
-    :param ra_col_name:
-    :param dec_col_name:
-    :param surveys:
-    :param bands:
-    :param apertures:
-    :param fovs:
-    :param image_path:
-    :param n_jobs:
-    :param auto_download:
-    :param verbosity:
-    :return:
-    """
+    # Set the DES DR1 NOAO sia url
+    def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+    svc = sia.SIAService(def_access_url)
 
-    # Check if table is pandas DataFrame otherwise convert to one
-    table, format = check_if_table_is_pandas_dataframe(table)
-    # Add a column to the table specifying the object name used
-    # for the image name
-    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                                 table[dec_col_name].values,
-                                                 epoch="J")
+    fov = fov / 3600.
 
-    for jdx, survey in enumerate(surveys):
-        band = bands[jdx]
-        aperture = apertures[jdx]
-        fov = fovs[jdx]
-
-        # Create list with image names
-        ra = table[ra_col_name].values
-        dec = table[dec_col_name].values
-        index = table.index
-
-        img_names = table.temp_object_name + "_" + survey + "_" + \
-                    band + "_fov" + '{:d}'.format(fov)
-
-        mp_args = list(zip(index,
-                           ra,
-                           dec,
-                           itertools.repeat(survey),
-                           itertools.repeat(band),
-                           itertools.repeat(aperture),
-                           itertools.repeat(fov),
-                           itertools.repeat(image_path),
-                           img_names,
-                           itertools.repeat(auto_download),
-                           itertools.repeat(verbosity)))
-
-        # Start multiprocessing pool
-        with mp.Pool(n_jobs) as pool:
-            results = pool.starmap(_mp_get_forced_photometry, mp_args)
-
-
-
-        for result in results:
-            idx, mag, flux, sn, err, comment = result
-            table.loc[idx, 'forced_{}_mag_{}'.format(survey, band)] = mag
-            table.loc[idx, 'forced_{}_flux_{}'.format(survey, band)] = flux
-            table.loc[idx, 'forced_{}_sn_{}'.format(survey, band)] = sn
-            table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
-                err
-            table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
-                comment
-
-    table.drop(columns='temp_object_name')
-
-    table = convert_table_to_format(table, format)
-
-    return table
-
-
-def _mp_get_forced_photometry(index, ra, dec, survey,
-                          band, aperture, fov, image_path, img_name,
-                          auto_download=True,
-                          verbosity=0):
-    """
-
-    :param index:
-    :param ra:
-    :param dec:
-    :param survey:
-    :param band:
-    :param aperture:
-    :param fov:
-    :param image_path:
-    :param img_name:
-    :param auto_download:
-    :param verbosity:
-    :return:
-    """
-
-    # Check if file is in folder
-    file_path = image_path + '/' + img_name + '.fits'
-    file_exists = os.path.isfile(file_path)
-
-    if file_exists is not True and auto_download is True:
-
-        if survey == "desdr1":
-            url = get_desdr1_deepest_image_url(ra,
-                                               dec,
-                                               fov=fov,
-                                               band=band,
-                                               verbosity=verbosity)
-
-        else:
-            raise ValueError("Survey name not recognized: {} . \n "
-                             "Possible survey names include: desdr1".format(
-                survey))
-
-        if url is not None:
-            download_image(url, image_name=img_name,
-                           image_path=image_path,
-                           verbosity=verbosity)
-
-            file_path = image_path + '/' + img_name + '.fits'
-            file_exists = os.path.isfile(file_path)
-
-    file_size_sufficient = False
-    if file_exists is True:
-        # Check if file is sufficient
-        file_size_sufficient = check_image_size(img_name,
-                                                file_path,
-                                                verbosity)
-
-    if file_exists is True and file_size_sufficient is True:
-        mag, flux, sn, err, comment = \
-            calculate_forced_aperture_photometry(file_path,
-                                                 ra, dec, survey,
-                                                 aperture,
-                                                 verbosity=verbosity)
-
-        return index, mag, flux, sn, err, comment
-
-    if file_exists is True and file_size_sufficient is not True:
-        comment = 'image_too_small'.format(aperture)
-
-        return index, np.nan, np.nan, np.nan, np.nan, comment
-
-    if file_exists is not True:
-        comment = 'image_not_available'.format(aperture)
-
-        return index, np.nan, np.nan, np.nan, np.nan, comment
-
-
-
-def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
-                          bands, apertures, fovs, image_path,
-                          auto_download=True,
-                          verbosity=0):
-    """
-
-    :param table:
-    :param ra_col_name:
-    :param dec_col_name:
-    :param surveys:
-    :param bands:
-    :param apertures:
-    :param fovs:
-    :param image_path:
-    :param auto_download: Boolean
-    :param verbosity:
-    :return:
-    """
-
-    # Check if table is pandas DataFrame otherwise convert to one
-    table, format = check_if_table_is_pandas_dataframe(table)
-    # Add a column to the table specifying the object name used
-    # for the image name
-    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                                 table[dec_col_name].values,
-                                                 epoch="J")
-
-    for jdx, survey in enumerate(surveys):
-
-        band = bands[jdx]
-        aperture = apertures[jdx]
-        fov = fovs[jdx]
-
-        for idx in table.index:
-
-            ra = table[ra_col_name].values[idx]
-            dec = table[dec_col_name].values[idx]
-
-            img_name = table.temp_object_name[idx]+"_"+survey+"_" + \
-                       band+"_fov"+'{:d}'.format(fov)
-
-            # Check if file is in folder
-            file_path = image_path + '/' + img_name + '.fits'
-            file_exists = os.path.isfile(file_path)
-
-            if file_exists is not True and auto_download is True:
-
-                if survey == "desdr1":
-                    url = get_desdr1_deepest_image_url(ra,
-                                                       dec,
-                                                       fov=fov,
-                                                       band=band,
-                                                       verbosity=verbosity)
-
-                else:
-                    raise ValueError("Survey name not recognized: {} . \n "
-                                     "Possible survey names include: desdr1".format(
-                        survey))
-
-                if url is not None:
-                    download_image(url, image_name=img_name,
-                                   image_path=image_path,
-                                   verbosity=verbosity)
-
-                    file_path = image_path + '/' + img_name + '.fits'
-                    file_exists = os.path.isfile(file_path)
-
-            file_size_sufficient = False
-            if file_exists is True:
-                # Check if file is sufficient
-                file_size_sufficient = check_image_size(img_name,
-                                                        file_path,
-                                                        verbosity)
-
-            if file_exists is True and file_size_sufficient is True:
-
-                mag, flux, sn, err, comment = \
-                    calculate_forced_aperture_photometry(file_path,
-                                                         ra, dec, survey,
-                                                         aperture,
-                                                         verbosity=verbosity)
-                table.loc[idx, 'forced_{}_mag_{}'.format(survey, band)] = mag
-                table.loc[idx, 'forced_{}_flux_{}'.format(survey, band)] = flux
-                table.loc[idx, 'forced_{}_sn_{}'.format(survey, band)] = sn
-                table.loc[idx, 'forced_{}_magerr_{}'.format(survey, band)] = \
-                    err
-                table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] =\
-                    comment
-
-            if file_exists is True and file_size_sufficient is not True:
-
-                table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
-                    'image_too_small'.format(aperture)
-
-            if file_exists is not True:
-
-                table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
-                    'image_not_available'.format(aperture)
-
-    table.drop(columns='temp_object_name')
-
-    table = convert_table_to_format(table, format)
-
-    return table
-
-
-def calculate_forced_aperture_photometry(filepath, ra, dec, survey, aperture,
-                                         verbosity=0):
-    """
-
-    :param filepath:
-    :param ra:
-    :param dec:
-    :param survey:
-    :param aperture:
-    :param verbosity:
-    :return:
-    """
-
-    # Open the fits image
-    data, header = fits.getdata(filepath, header=True)
-
-    # Convert radius from arcseconds to pixel
-    pixelscale = get_pixelscale(header)
-    aperture_pixel = aperture / pixelscale  # pixels
-
-    # Transform coordinates of target position to pixel scale
-    wcs_img = wcs.WCS(header)
-    pixel_coordinate = wcs_img.wcs_world2pix(ra, dec, 1)
-
-    # QUICKFIX to stop aperture photometry from crashing
     try:
-        # Get photometry
-        positions = (pixel_coordinate[0], pixel_coordinate[1])
-        apertures = CircularAperture(positions, r=aperture_pixel)
-        f = aperture_photometry(data, apertures)
-        flux = np.ma.masked_invalid(f['aperture_sum'])
+        img_table = svc.search((ra, dec), (fov/np.cos(dec*np.pi/180), fov),
+                               verbosity=verbosity).to_table()
+    except:
+        img_table = svc.search((ra, dec),
+                               (fov / np.cos(dec * np.pi / 180), fov),
+                               verbosity=verbosity).table
 
-        # Get the noise
-        rmsimg, mean_noise, empty_flux = get_noiseaper(data, aperture_pixel)
+    if verbosity > 0:
+        print("The full image list contains", len(img_table), "entries")
 
-        sn = flux[0] / rmsimg
+    sel_band = img_table['obs_bandpass'].astype(str) == band
 
-        comment = 'ap_{}'.format(aperture)
+    sel = sel_band & ((img_table['proctype'].astype(str) == 'Stack') &
+                      (img_table['prodtype'].astype(str) == 'image'))
+
+    # basic selection
+    table = img_table[sel]  # select
+
+    if len(table) > 0:
+        row = table[np.argmax(table['exptime'].data.data.astype(
+            'float'))]  # pick image with longest exposure time
+        url = row['access_url'].decode()  # get the download URL
 
         if verbosity > 0:
-            print("flux: ", flux[0], "sn: ", sn)
+            print('downloading deepest stacked image...')
 
-        if sn < 0:
-            flux[0] = rmsimg
-            err = -1
-            mags = flux_to_magnitude(flux, survey)[0]
-        else:
-            mags = flux_to_magnitude(flux, survey)[0]
-            err = mag_err(1. / sn, verbose=False)
-
+    else:
         if verbosity > 0:
-            print("mag: ", mags)
+            print('No image available.')
+        url = None
 
-        if mags is np.ma.masked:
-            mags = -999
-            comment = 'masked'
-        if sn is np.ma.masked:
-            sn = np.nan
-        if err is np.ma.masked:
-            err = np.nan
-        if flux[0] is np.ma.masked:
-            flux = np.nan
+    return url
+
+
+def get_unwise_image_url(ra, dec, npix, band, data_release, filetype="image"):
+    """ Construct the UNWISE specific URL to download UNWISE cutouts.
+
+    :param ra: float
+        Right ascension of target
+    :param dec: float
+        Declination of target
+    :param npix: float
+        Cutout image size in pixels
+    :param band: str
+        Passband of the image
+    :param data_release: str
+        String specifying the unwise data release. Possible values are: neo1,
+        neo2, neo3, allwise
+    :param verbosity: int
+        Verbosity > 0 will print verbose statements during the execution
+    :return: str
+        Returns the url to the DES DR1 image cutout
+    """
+
+    # Maximum cutout size for unWISE cutouts is 256 pixel
+    if npix >=256:
+        npix=256
+
+    datatype = {"image":"&file_img_m=on",
+                "std":"&file_std_m=on",
+                "invvar":"&file_invvar_m=on"}
+
+    file_type = datatype[filetype]
+
+    basedr = dict(neo1="http://unwise.me/cutout_fits?version=neo1&",
+                neo2="http://unwise.me/cutout_fits?version=neo2&",
+                neo3="http://unwise.me/cutout_fits?version=neo3&",
+                 allwise="http://unwise.me/cutout_fits?version=allwise&")
+    base = basedr[data_release]
+    ra = "ra={:0}&".format(ra)
+    dec = "dec={:0}&".format(dec)
+    size = "size={:0}&".format(npix)
+    band = "bands={0:s}".format(band)
+
+    url = base + ra + dec + size + band + file_type
+
+    return url
+
+# ------------------------------------------------------------------------------
+#  Alternative helper functions for non-automatic cutout downloads
+# ------------------------------------------------------------------------------
+
+
+def make_vsa_upload_file(table, ra_col_name, dec_col_name,
+                         filename='vsa_upload.csv'):
+    """Create the Vista Science Archive upload file (csv format) from the input
+    data table.
+
+    :param table: table object
+        Input data table with at least RA and Decl. columns
+    :param ra_col_name: string
+        Exact string for the RA column in the table
+    :param dec_col_name: string
+        Exact string for the Decl. column in the table
+    :param filename:
+        Output filename, should include ".csv"
+    :return: None
+    """
+
+    table, format = check_if_table_is_pandas_dataframe(table)
+
+    table[[ra_col_name, dec_col_name]].to_csv(filename, index=False,
+                                              header=False)
+
+
+def download_vhs_wget_cutouts(wget_filename, image_path, survey_name='vhsdr6',
+                              fov=None, verbosity=0):
+    """Download the image cutouts based on the VSA 'wget' file specified.
+
+    :param wget_filename: str
+        Filepath and filename to the "wget" Vista Science Archive file
+    :param image_path: str
+        Path to where the image will be stored
+    :param survey_name: str
+        Name of the Vista Science Archive survey and data release queried.
+        This name will be used in further manipulation of the image data. An
+        example for VHS DR6 is 'vhsdr6'
+    :param fov: float
+        Field of view in arcseconds
+    :param verbosity: int
+        Verbosity > 0 will print verbose statements during the execution
+    :return: None
+    """
+
+    data = np.genfromtxt(wget_filename, delimiter=' ', dtype=("str"))
+
+    for idx, url in enumerate(data[:, 1]):
+
+        url = url[1:-1]
+        vhs_download_name = data[idx, 3]
+        vhs_name_list = vhs_download_name.split(".")[0].split("_")
+
+        position_name = vhs_name_list[1]
+        band = vhs_name_list[2]
+
+        # Create image name
+        if fov is not None:
+            image_name = "J" + position_name + "_" + survey_name + "_" + \
+                         band + "_fov" + str(fov)
         else:
-            flux = flux[0]
+            image_name = "J" + position_name + "_" + survey_name + "_" + band
 
-        return mags, flux, sn, err, comment
+        # Check if file is in folder
+        file_path = image_path + '/' + image_name + '.fits'
+        file_exists = os.path.isfile(file_path)
 
-    except ValueError:
-        return -999, np.nan, np.nan, np.nan, 'crashed'
+        if file_exists:
+            if verbosity > 0:
+                print("Image of {} already exists in {}.".format(image_name,
+                                                              image_path))
+        else:
+            datafile = urlopen(url)
+            check_ok = datafile.msg == 'OK'
 
+            if check_ok:
 
-
-
-def check_image_size(image_name, file_path, verbosity):
-    """
-
-    :param image_name:
-    :param file_path:
-    :param verbosity:
-    :return:
-    """
-
-    shape = fits.getdata(file_path).shape
-    min_axis = np.min(shape)
-
-    if min_axis < 50 and verbosity > 0:
-        print("Minimum image dimension : {} (pixels)".format(min_axis))
-        print("Too few pixels in one axis (<50). Skipping {}".format(
-            image_name))
-
-    if min_axis < 50:
-        return False
-    else:
-        return True
+                file = datafile.read()
+                tmp_name = "tmp.gz"
+                tmp = open(tmp_name, "wb")
+                tmp.write(file)
+                tmp.close()
 
 
-# magnitude calculation
 
-def flux_to_magnitude(flux, survey):
-    """
+                with gzip.open('tmp.gz', 'rb') as f_in:
+                    with open(image_path + '/' + image_name + '.fits',
+                              'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
 
-    :param flux:
-    :param survey:
-    :return:
-    """
-    if survey == "desdr1":
-        zpt = 30.
-    else:
-        raise ValueError("Survey name not recgonized: {}".format(survey))
+                if verbosity > 0:
+                    print("Download of {} to {} completed".format(image_name,
+                                                                  image_path))
+            else:
+                if verbosity > 0:
+                    print("Download of {} unsuccessful".format(image_name))
 
-    return -2.5 * np.log10(flux) + zpt
 
 
 def make_png(filename, ra, dec, size=20, aperture=2, band='filter',
@@ -1080,132 +755,5 @@ def make_png(filename, ra, dec, size=20, aperture=2, band='filter',
         plt.close('all')
     else:
         print("Couldn't create png. Object outside the image")
-
-
-#  OLD CODE FROM EDUARDO - NOT MODIFIED
-
-def aperture_inpixels(aperture, hdr):
-    '''
-    receives aperture in arcsec. Returns aperture in pixels
-    '''
-    pixelscale=get_pixelscale(hdr)
-    aperture /= pixelscale #pixels
-
-    return aperture
-
-
-def zscale(zscaleimg):
-
-    z1 = np.amin(zscaleimg)
-    z2 = np.amax(zscaleimg)
-
-    return z1, z2
-
-
-
-
-
-def mag_err(noise_flux_ratio, verbose=True):
-    '''
-    Calculates the magnitude error from the input noise_flux_ratio
-    which is basically the inverse of the Signal-to-Noise ratio
-    '''
-    err = (2.5 / np.log(10)) * noise_flux_ratio
-    if verbose:
-        print(err)
-    return err
-
-
-
-
-def get_pixelscale(hdr):
-    '''
-    Get pixelscale from header and return in it in arcsec/pixel
-    '''
-    if 'CDELT1' in hdr.keys():
-        CD1 = hdr['CDELT1']
-        CD2 = hdr['CDELT2']
-    elif 'CD1_1' in hdr.keys():
-        CD1 = hdr['CD1_1']
-        CD2 = hdr['CD2_2']
-    else:
-        print('pixel scale unknown. Using 1 pix/arcsec')
-        CD1 = CD2 = 1
-
-    scale = 0.5 * (np.abs(CD1) + np.abs(CD2)) * 3600
-
-    return scale
-
-
-
-def get_noiseaper(data, radius):
-    # print("estimating noise in aperture: ", radius)
-
-    sources_mask = make_source_mask(data, snr=2.5, npixels=3,
-                                     dilate_size=15, filter_fwhm=4.5)
-
-
-    N=5100
-    ny, nx = data.shape
-    x1 = np.int(nx * 0.09)
-    x2 = np.int(nx * 0.91)
-    y1 = np.int(ny * 0.09)
-    y2 = np.int(ny * 0.91)
-    xx = np.random.uniform(x1, x2, N)
-    yy = np.random.uniform(y1, y2, N)
-
-    mask = sources_mask[np.int_(yy), np.int_(xx)]
-    xx= xx[~mask]
-    yy = yy[~mask]
-
-    positions = (xx, yy)
-    apertures = CircularAperture(positions, r=radius)
-    f = aperture_photometry(data, apertures, mask=sources_mask)
-    f = np.ma.masked_invalid(f['aperture_sum'])
-    m1 = np.isfinite(f) #& (f!=0)
-    empty_fluxes = f[m1]
-    emptyapmeanflux, emptyapsigma = gaussian_fit_to_histogram(empty_fluxes)
-
-    return emptyapsigma, emptyapmeanflux, empty_fluxes
-
-
-
-def gaussian_fit_to_histogram(dataset):
-    """ fit a gaussian function to the histogram of the given dataset
-    :param dataset: a series of measurements that is presumed to be normally
-       distributed, probably around a mean that is close to zero.
-    :return: mean, mu and width, sigma of the gaussian model fit.
-
-    Taken from
-
-    https://github.com/djones1040/PythonPhot/blob/master/PythonPhot/photfunctions.py
-    """
-    def gauss(x, mu, sigma):
-        return np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
-
-    if np.ndim(dataset) == 2:
-        musigma = np.array([gaussian_fit_to_histogram(dataset[:, i])
-                            for i in range(np.shape(dataset)[1])])
-        return musigma[:, 0], musigma[:, 1]
-
-    dataset = dataset[np.isfinite(dataset)]
-    ndatapoints = len(dataset)
-    stdmean, stdmedian, stderr, = sigma_clipped_stats(dataset, sigma=5.0)
-    nhistbins = max(10, int(ndatapoints / 20))
-    histbins = np.linspace(stdmedian - 5 * stderr, stdmedian + 5 * stderr,
-                           nhistbins)
-    yhist, xhist = np.histogram(dataset, bins=histbins)
-    binwidth = np.mean(np.diff(xhist))
-    binpeak = float(np.max(yhist))
-    param0 = [stdmedian, stderr]  # initial guesses for gaussian mu and sigma
-    xval = xhist[:-1] + (binwidth / 2)
-    yval = yhist / binpeak
-    try:
-        minparam, cov = curve_fit(gauss, xval, yval, p0=param0)
-    except RuntimeError:
-        minparam = -99, -99
-    mumin, sigmamin = minparam
-    return mumin, sigmamin
-
 
 

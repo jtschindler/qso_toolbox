@@ -61,3 +61,34 @@ def deredden(to_deredden, band, ext, ext_band, input_type="AB"):
         return to_deredden / np.power(10, -0.4*extinction)
     if input_type == "asinh":
         raise NotImplementedError
+
+
+# ------------------------------------------------------------------------------
+#  Functions to integrate and generalize
+# ------------------------------------------------------------------------------
+
+
+def flux_to_magnitude(flux, survey):
+    """
+
+    :param flux:
+    :param survey:
+    :return:
+    """
+    if survey == "desdr1":
+        zpt = 30.
+    else:
+        raise ValueError("Survey name not recgonized: {}".format(survey))
+
+    return -2.5 * np.log10(flux) + zpt
+
+
+def mag_err(noise_flux_ratio, verbose=True):
+    '''
+    Calculates the magnitude error from the input noise_flux_ratio
+    which is basically the inverse of the Signal-to-Noise ratio
+    '''
+    err = (2.5 / np.log(10)) * noise_flux_ratio
+    if verbose:
+        print(err)
+    return err
