@@ -12,6 +12,8 @@ from astropy.io import ascii, fits
 
 import pandas as pd
 
+from scipy.optimize import curve_fit
+
 from photutils import aperture_photometry, CircularAperture
 from photutils import Background2D, MedianBackground, make_source_mask
 
@@ -450,8 +452,8 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
 
         for idx in table.index:
 
-            ra = table[ra_col_name].values[idx]
-            dec = table[dec_col_name].values[idx]
+            ra = table.loc[idx, ra_col_name]
+            dec = table.loc[idx, dec_col_name]
 
             img_name = table.temp_object_name[idx]+"_"+survey+"_" + \
                        band+"_fov"+'{:d}'.format(fov)
@@ -468,11 +470,26 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                                                        fov=fov,
                                                        band=band,
                                                        verbosity=verbosity)
+                elif survey.split("-")[0] == "unwise" and band in ["w1",
+                                                                   "w2",
+                                                                   "w3",
+                                                                   "w4"]:
+                    # Hack to create npix from fov approximately
+                    npix = int(round(fov / 60. / 4. * 100))
+
+                    data_release = survey.split("-")[1]
+                    wband = band[1]
+
+                    url = ct.get_unwise_image_url(ra, dec, npix, wband,
+                                                   data_release)
 
                 else:
-                    raise ValueError("Survey name not recognized: {} . \n "
-                                     "Possible survey names include: desdr1".format(
-                        survey))
+                    raise ValueError(
+                        "Survey and band name not recognized: {} {}. "
+                        "\n "
+                        "Possible survey names include: desdr1, "
+                        "unwise-allwise, unwise-neo1, unwise-neo2, "
+                        "unwise-neo3".format(survey, band))
 
                 if url is not None:
                     ct.download_image(url, image_name=img_name,
@@ -483,6 +500,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                     file_exists = os.path.isfile(file_path)
 
             file_size_sufficient = False
+
             if file_exists is True:
                 # Check if file is sufficient
                 file_size_sufficient = check_image_size(img_name,
@@ -770,21 +788,6 @@ def check_image_size(image_name, file_path, verbosity):
         return True
 
 
-def flux_to_magnitude(flux, survey):
-    """
-
-    :param flux:
-    :param survey:
-    :return:
-    """
-    if survey == "desdr1":
-        zpt = 30.
-    else:
-        raise ValueError("Survey name not recgonized: {}".format(survey))
-
-    return -2.5 * np.log10(flux) + zpt
-
-
 def aperture_inpixels(aperture, hdr):
     '''
     receives aperture in arcsec. Returns aperture in pixels
@@ -894,7 +897,47 @@ def gaussian_fit_to_histogram(dataset):
     return mumin, sigmamin
 
 
+def flux_to_magnitude(flux, survey):
+    """
 
+    :param flux:
+    :param survey:
+    :return:
+    """
+    if survey == "desdr1":
+        zpt = 30.
+    elif survey.split("-")[0] == "unwise":
+        zpt = 22.5
+    else:
+        raise ValueError("Survey name not recgonized: {}".format(survey))
+
+    return -2.5 * np.log10(flux) + zpt
+
+
+def nmgy2abmag(flux, flux_ivar=None):
+    """
+    Conversion from nanomaggies to AB mag as used in the DECALS survey
+    flux_ivar= Inverse variance oF DECAM_FLUX (1/nanomaggies^2)
+    """
+    lenf = len(flux)
+    if lenf > 1:
+        ii = np.where(flux>0)
+        mag = 99.99 + np.zeros_like(flux)
+        mag[ii] = 22.5 - 2.5*np.log10(flux[ii])
+    else:
+        mag = 22.5 - 2.5*np.log10(flux)
+
+    if flux_ivar is None:
+        return mag
+    elif lenf>1:
+        err = np.zeros_like(mag)
+        df = np.sqrt(1./flux_ivar)
+        err[ii] = mag_err(df[ii]/flux[ii], verbose=False)
+    else:
+        df = np.sqrt(1./flux_ivar)
+        err = mag_err(df/flux, verbose=False)
+
+    return mag, err
 
 
 

@@ -51,7 +51,9 @@ import multiprocessing as mp
 
 from astropy.nddata.utils import Cutout2D
 
-
+# ------------------------------------------------------------------------------
+#  Supported surveys, data releases, bands
+# ------------------------------------------------------------------------------
 
 
 
@@ -186,10 +188,25 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
     and the field of fiew. Each entry in the survey list corresponds to one
     entry in the passband and field of view lists.
 
+    The downloaded images will be save in the image_path directory using a
+    unique filename based on the target position, survey + data release,
+    passband and field of view.
+
+    Image name
+    [Epoch Identifier][RA in HHMMSS.SS][DEC in DDMMSS.SS]_
+                                 [SURVEY]_[PASSBAND]_fov[FIELD OF VIEW].fits
+
+    A example for DES DR1 z-band with a field of view of 100 arcsec:
+    J224029.28-000511.83_desdr1_z_fov100.fits
+
     The list of field of views will be accurately downloaded for desdr1. For
     the download of the unWISE image cutouts the field of views will be
     converted to number of pixels with npix = fov / 60. /4. * 100, with an
     upper limit of 256 pixels.
+
+    IMPORTANT:
+    The function will skip downloads for targets with exactly the same
+    specifications (filenames) that already exist in the folder.
 
     :param table: table object
         Input data table with at least RA and Decl. columns
@@ -221,10 +238,9 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
         survey = surveys[jdx]
         fov = fovs[jdx]
 
-
         for idx in table.index:
-            ra = table[ra_col_name].values[idx]
-            dec = table[dec_col_name].values[idx]
+            ra = table.loc[idx, ra_col_name]
+            dec = table.loc[idx, dec_col_name]
 
             if survey == "desdr1" and band in ["g", "r", "i", "z", "Y"]:
 
@@ -245,7 +261,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
                                                                "w3", "w4"]:
 
                 # Hack to create npix from fov approximately
-                npix = fov/60./4. * 100
+                npix = int(round(fov/60./4. * 100))
 
                 img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
                            band + "_fov" + '{:d}'.format(fov)
@@ -277,7 +293,32 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_path,
 
 def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
                       image_path, fovs, n_jobs=2, verbosity=0):
-    """
+    """Download photometric images for all objects in the given input table
+    using multiprocessing.
+
+    Lists need to be supplied to specify the survey, the photometric passband
+    and the field of fiew. Each entry in the survey list corresponds to one
+    entry in the passband and field of view lists.
+
+    The downloaded images will be save in the image_path directory using a
+    unique filename based on the target position, survey + data release,
+    passband and field of view.
+
+    Image name
+    [Epoch Identifier][RA in HHMMSS.SS][DEC in DDMMSS.SS]_
+                                 [SURVEY]_[PASSBAND]_fov[FIELD OF VIEW].fits
+
+    A example for DES DR1 z-band with a field of view of 100 arcsec:
+    J224029.28-000511.83_desdr1_z_fov100.fits
+
+    The list of field of views will be accurately downloaded for desdr1. For
+    the download of the unWISE image cutouts the field of views will be
+    converted to number of pixels with npix = fov / 60. /4. * 100, with an
+    upper limit of 256 pixels.
+
+    IMPORTANT:
+    The function will skip downloads for targets with exactly the same
+    specifications (filenames) that already exist in the folder.
 
     :param table: table object
         Input data table with at least RA and Decl. columns
@@ -369,6 +410,27 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_path,
         else:
             url = None
 
+    elif survey.split("-")[0] == "unwise" and band in ["w1", "w2",
+                                                       "w3", "w4"]:
+
+        # Hack to create npix from fov approximately
+        npix = int(round(fov / 60. / 4. * 100))
+
+        img_name = temp_object_name + "_" + survey + "_" + \
+                   band + "_fov" + '{:d}'.format(fov)
+
+        file_path = image_path + '/' + img_name + '.fits'
+        file_exists = os.path.isfile(file_path)
+
+        data_release = survey.split("-")[1]
+        wband = band[1]
+
+        if file_exists is not True:
+            url = get_unwise_image_url(ra, dec, npix, wband,
+                                       data_release)
+        else:
+            url = None
+
     else:
         raise ValueError("Survey name not recognized: {} . \n "
                          "Possible survey names include: desdr1".format(
@@ -425,6 +487,7 @@ def download_image(url, image_name, image_path, verbosity=0):
             elif survey == "unwise-allwise" or survey == "unwise-neo1" or \
                     survey == "unwise-neo2" or survey == "unwise-neo3":
 
+
                 datafile = urlopen(url)
                 file = datafile.read()
                 tmp_name = "tmp.tar.gz"
@@ -447,6 +510,7 @@ def download_image(url, image_name, image_path, verbosity=0):
         else:
             if verbosity > 0:
                 print("Download of {} unsuccessful".format(image_name))
+                print("Tried to download from: {}".forma(url))
 
     except (IncompleteRead, HTTPError, AttributeError, ValueError) as err:
         print(err)

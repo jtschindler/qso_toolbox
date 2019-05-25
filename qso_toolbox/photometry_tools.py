@@ -92,3 +92,28 @@ def mag_err(noise_flux_ratio, verbose=True):
     if verbose:
         print(err)
     return err
+
+def nmgy2abmag(flux, flux_ivar=None):
+    """
+    Conversion from nanomaggies to AB mag as used in the DECALS survey
+    flux_ivar= Inverse variance oF DECAM_FLUX (1/nanomaggies^2)
+    """
+    lenf = len(flux)
+    if lenf > 1:
+        ii = np.where(flux>0)
+        mag = 99.99 + np.zeros_like(flux)
+        mag[ii] = 22.5 - 2.5*np.log10(flux[ii])
+    else:
+        mag = 22.5 - 2.5*np.log10(flux)
+
+    if flux_ivar is None:
+        return mag
+    elif lenf>1:
+        err = np.zeros_like(mag)
+        df = np.sqrt(1./flux_ivar)
+        err[ii] = mag_err(df[ii]/flux[ii], verbose=False)
+    else:
+        df = np.sqrt(1./flux_ivar)
+        err = mag_err(df/flux, verbose=False)
+
+    return mag,err
