@@ -515,35 +515,58 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
                         pos_angle_column_name=None,
                         offset_mag_column_name=None,
                         offset_id_column_name=None,
-                        label_position=None,
-                        plot_list=False, slit_width=None, slit_length=None,
-                        format = 'pdf',
+                        label_position=None, slit_width=None, slit_length=None,
+                        format ='pdf',
                         auto_download=False, verbosity=0):
 
-    """
+    """Create and save finding charts plots for all targets in the input table.
 
-    :param table:
-    :param ra_column_name:
-    :param dec_column_name:
-    :param target_column_name:
-    :param survey:
-    :param band:
-    :param aperture:
-    :param fov:
-    :param image_folder_path:
-    :param offset_table:
-    :param offset_ra_column_name:
-    :param offset_dec_column_name:
-    :param pos_angle_column_name:
-    :param offset_mag_column_name:
-    :param offset_id_column_name:
-    :param label_position:
-    :param plot_list:
-    :param slit_width:
-    :param slit_length:
-    :param auto_download:
+    :param table: pandas.core.frame.DataFrame
+        Dataframe with targets to plot finding charts for
+    :param ra_column_name: string
+        Right ascension column name
+    :param dec_column_name: string
+        Declination column name
+    :param target_column_name: string
+        Name of the target identifier column
+    :param survey: string
+        Survey name
+    :param band: string
+        Passband name
+    :param aperture: float
+        Aperture to plot in arcseconds
+    :param fov: float
+        Field of view in arcseconds
+    :param image_folder_path: string
+        Path to where the image will be stored
+    :param offset_table: pandas.core.frame.DataFrame
+        Pandas dataframe with offset star information for all targets
+    :param offset_ra_column_name: string
+        Offset star dataframe right ascension column name
+    :param offset_dec_column_name: string
+        Offset star dataframe declination column name
+    :param pos_angle_column_name: string
+        Offset star dataframe position angle column name
+    :param offset_mag_column_name: string
+        Offset star dataframe magnitude column name
+    :param offset_id_column_name: string
+        Offset star dataframe identifier column name
+    :param label_position: string
+        String that defines the label position for the offset stars.
+        Possible label positions are ["left", "right", "top", "bottom",
+         "topleft"]
+    :param slit_width: float
+        Slit width in arcseconds.
+    :param slit_length: float
+        Slit length in arcseconds
+    :param format: string
+        A string indicating in which format the finding charts are save.
+        Possible formats: 'pdf', 'png'
+    :param auto_download: boolean
+        Boolean to indicate whether images should be automatically downloaded.
+        NOT IMPLEMENTED YET.
     :param verbosity:
-    :return:
+        Verbosity > 0 will print verbose statements during the execution.
     """
 
 
@@ -1140,7 +1163,8 @@ def _mp_get_forced_photometry(index, ra, dec, survey,
         Survey name
     :param band: string
         Passband name
-    :param aperture:
+    :param aperture: float
+        Aperture to calculate forced photometry in in arcseconds
     :param fov: float
         Field of view in arcseconds
     :param image_folder_path: string
