@@ -1,2 +1,2 @@
-# qso_sel_toolbox
+# qso_toolbox
 A bundle of useful python tools for quasar selection
