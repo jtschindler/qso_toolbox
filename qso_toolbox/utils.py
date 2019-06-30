@@ -30,6 +30,25 @@ def decdecl_to_dms(ddecl):
 
     return decl_degrees, decl_minutes, decl_seconds
 
+
+def coord_to_hmsdms(dra, ddecl):
+    ra_hours, ra_minutes, ra_seconds = decra_to_hms(dra)
+    decl_degrees, decl_minutes, decl_seconds = decdecl_to_dms(ddecl)
+
+    coord_list = []
+    for idx in range(len(dra)):
+        ra = '{:02g}:{:02g}:{:05.3f}'.format(ra_hours[idx],
+                                           ra_minutes[idx],
+                                           ra_seconds[idx])
+        dec = '{:+03g}:{:02g}:{:05.2f}'.format(decl_degrees[idx],
+                                             decl_minutes[idx],
+                                             decl_seconds[idx])
+
+        coord_list.append([ra, dec])
+
+    return coord_list
+
+
 def coord_to_name(dra, dd, epoch ='J'):
     """Return an object name based on its Right Ascension and Declination.
 
