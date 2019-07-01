@@ -31,6 +31,6 @@ This module includes functions that query and retrieve astronomical catalog data
 This module focuses on forced photometry calculation and high-level plotting routines.
 
 ### Current functionality:
-#### * Plotting multi-survey image data with additional photometry information
+#### * Plotting multi-survey image data with additional photometry information 
 #### * Create finding charts (utilizing the output of the offset star retrieval)
 #### * Forced photometry calculation (unWISE, DES DR1)
