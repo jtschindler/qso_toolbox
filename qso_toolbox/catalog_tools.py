@@ -1088,6 +1088,8 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
         vsa_info = get_vsa_info(survey)
 
+        print(survey, band, vsa_info, n_jobs)
+
         mp_args = list(zip(table[ra_col_name].values,
                            table[dec_col_name].values,
                            itertools.repeat(survey),
@@ -1101,8 +1103,10 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
         # alternative idea: get all urls first and then download them.
 
-        with mp.Pool(n_jobs) as pool:
+        with mp.Pool(processes=n_jobs) as pool:
             pool.starmap(_mp_photometry_download, mp_args)
+
+
 
 
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
@@ -1418,11 +1422,18 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
     def_access_url = "https://datalab.noao.edu/sia/des_dr1"
     svc = sia.SIAService(def_access_url)
 
+    if verbosity >0:
+        print(svc)
+
     fov = fov / 3600.
+
+    print(type(svc.search((ra, dec), (fov / np.cos(dec * np.pi / 180), fov),
+                     verbosity=verbosity)))
 
     try:
         img_table = svc.search((ra, dec), (fov/np.cos(dec*np.pi/180), fov),
                                verbosity=verbosity).to_table()
+
     except:
         img_table = svc.search((ra, dec),
                                (fov / np.cos(dec * np.pi / 180), fov),
