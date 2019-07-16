@@ -1075,6 +1075,8 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
     :return: None
     """
 
+
+
     table, table_format = check_if_table_is_pandas_dataframe(table)
 
     table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
@@ -1088,8 +1090,6 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
         vsa_info = get_vsa_info(survey)
 
-        print(survey, band, vsa_info, n_jobs)
-
         mp_args = list(zip(table[ra_col_name].values,
                            table[dec_col_name].values,
                            itertools.repeat(survey),
@@ -1102,11 +1102,10 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
 
         # alternative idea: get all urls first and then download them.
-
         with mp.Pool(processes=n_jobs) as pool:
-            pool.starmap(_mp_photometry_download, mp_args)
-
-
+            res = pool.starmap(_mp_photometry_download, mp_args)
+            print(res.get(timeout=1))
+            pool.close()
 
 
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
@@ -1235,6 +1234,8 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
         except:
             # if verbosity >0:
             print('Download error')
+
+    return 0
 
 
 def download_image(url, image_name, image_folder_path, verbosity=0):
@@ -1427,43 +1428,50 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
 
     fov = fov / 3600.
 
-    print(type(svc.search((ra, dec), (fov / np.cos(dec * np.pi / 180), fov),
-                     verbosity=verbosity)))
+    siaresults = None
+    if isinstance(svc, sia.SIAService):
+        siaresults = svc.search((ra, dec),
+                                (fov / np.cos(dec * np.pi / 180), fov),
+                                verbosity=verbosity)
 
-    try:
-        img_table = svc.search((ra, dec), (fov/np.cos(dec*np.pi/180), fov),
-                               verbosity=verbosity).to_table()
+    if isinstance(siaresults, sia.SIAResults):
 
-    except:
-        img_table = svc.search((ra, dec),
-                               (fov / np.cos(dec * np.pi / 180), fov),
-                               verbosity=verbosity).table
 
-    if verbosity > 0:
-        print("The full image list contains", len(img_table), "entries")
+        try:
+            img_table = siaresults.to_table()
 
-    sel_band = img_table['obs_bandpass'].astype(str) == band
-
-    sel = sel_band & ((img_table['proctype'].astype(str) == 'Stack') &
-                      (img_table['prodtype'].astype(str) == 'image'))
-
-    # basic selection
-    table = img_table[sel]  # select
-
-    if len(table) > 0:
-        row = table[np.argmax(table['exptime'].data.data.astype(
-            'float'))]  # pick image with longest exposure time
-        url = row['access_url'].decode()  # get the download URL
+        except:
+            img_table = siaresults.table
 
         if verbosity > 0:
-            print('downloading deepest stacked image...')
+            print("The full image list contains", len(img_table), "entries")
+
+        sel_band = img_table['obs_bandpass'].astype(str) == band
+
+        sel = sel_band & ((img_table['proctype'].astype(str) == 'Stack') &
+                          (img_table['prodtype'].astype(str) == 'image'))
+
+        # basic selection
+        table = img_table[sel]  # select
+
+        if len(table) > 0:
+            row = table[np.argmax(table['exptime'].data.data.astype(
+                'float'))]  # pick image with longest exposure time
+            url = row['access_url'].decode()  # get the download URL
+
+            if verbosity > 0:
+                print('downloading deepest stacked image...')
+
+        else:
+            if verbosity > 0:
+                print('No image available.')
+            url = None
+
+        return url
 
     else:
-        if verbosity > 0:
-            print('No image available.')
-        url = None
-
-    return url
+        print('SIA Error')
+        return None
 
 
 def get_unwise_image_url(ra, dec, npix, band, data_release, filetype="image"):
