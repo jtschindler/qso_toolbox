@@ -32,6 +32,7 @@ except ImportError:
 
 #SIA
 from pyvo.dal import sia
+import pyvo
 
 from qso_toolbox import utils as ut
 
@@ -1103,9 +1104,8 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
         # alternative idea: get all urls first and then download them.
         with mp.Pool(processes=n_jobs) as pool:
-            res = pool.starmap(_mp_photometry_download, mp_args)
-            print(res.get(timeout=1))
-            pool.close()
+            pool.starmap(_mp_photometry_download, mp_args)
+
 
 
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
@@ -1418,21 +1418,25 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
     :return: str
         Returns the url to the DES DR1 image cutout
     """
-
+    import time
+    time.sleep(2)
     # Set the DES DR1 NOAO sia url
     def_access_url = "https://datalab.noao.edu/sia/des_dr1"
     svc = sia.SIAService(def_access_url)
 
-    if verbosity >0:
+    if verbosity > 0:
         print(svc)
 
     fov = fov / 3600.
 
     siaresults = None
     if isinstance(svc, sia.SIAService):
-        siaresults = svc.search((ra, dec),
-                                (fov / np.cos(dec * np.pi / 180), fov),
-                                verbosity=verbosity)
+        try:
+            siaresults = svc.search((ra, dec),
+                                (fov / np.cos(dec * np.pi / 180), fov))
+        except pyvo.dal.DALQueryError as err:
+            print(err)
+            siaresults = None
 
     if isinstance(siaresults, sia.SIAResults):
 
