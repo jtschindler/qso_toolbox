@@ -1,5 +1,7 @@
 
 import numpy as np
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 
 def decra_to_hms(dra):
     """Convert Right Ascension in deciaml degrees to hours, minutes, seconds.
@@ -128,3 +130,52 @@ def coord_to_vhsname(dra, dd, epoch ='J'):
                                              decl_seconds_list[idx]))
 
     return coord_name_list
+
+
+def get_offset_parameters(df, ra_column_name, dec_column_name,
+                          ra_offset_column_name, dec_offset_column_name,
+                          verbosity=0):
+
+    df['dra'] = None
+    df['ddec'] = None
+    df['separation'] = None
+    df['pos_angle'] = None
+
+    for idx in df.index:
+
+        ra = df.loc[idx, ra_column_name]
+        dec = df.loc[idx, dec_column_name]
+        ra_off = df.loc[idx, ra_offset_column_name]
+        dec_off = df.loc[idx, dec_offset_column_name]
+
+        dra, ddec, separation, pos_angle = calculate_offset_parameters(
+            ra, dec, ra_off, dec_off, verbosity=verbosity)
+
+        df.loc[idx, 'dra'] = dra.to(u.arcsecond).value
+        df.loc[idx, 'ddec'] = ddec.to(u.arcsecond).value
+        df.loc[idx, 'separation'] = separation.value
+        df.loc[idx, 'pos_angle'] = pos_angle.value
+
+    return df
+
+
+def calculate_offset_parameters(ra, dec, ra_offset, dec_offset, verbosity=0):
+
+    target_coords = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg),
+                             frame='icrs')
+    offset_coords = SkyCoord(ra=ra_offset,
+                             dec=dec_offset, unit=(u.deg, u.deg),
+                             frame='icrs')
+
+    # Calculate position angles and separations (East of North)
+    pos_angles = offset_coords.position_angle(target_coords).to(u.deg)
+    separations = offset_coords.separation(target_coords).to(u.arcsecond)
+    dra, ddec = offset_coords.spherical_offsets_to(target_coords)
+
+    if verbosity > 1:
+        print('Offset delta ra: {}'.format(dra))
+        print('Offset delta dec: {}'.format(ddec))
+        print('Offset separation: {}'.format(separations))
+        print('Offset position angle: {}'.format(pos_angles))
+
+    return dra, ddec, separations, pos_angles

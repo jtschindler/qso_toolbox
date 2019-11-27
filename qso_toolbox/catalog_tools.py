@@ -52,6 +52,11 @@ astroquery_dict = {
                     'vhsdr6': {'service': 'vsa', 'catalog': 'VHS',
                                'ra': 'ra', 'dec': 'dec',
                                'data_release': 'VHSDR6', 'mag_name': 'VHS_J',
+                               'mag': 'jAperMag3', 'distance': 'distance'},
+                    # new, needs to be tested!
+                    'vikingdr5': {'service': 'vsa', 'catalog': 'VIKING',
+                               'ra': 'ra', 'dec': 'dec',
+                               'data_release': 'VIKINGDR5', 'mag_name': 'VHS_J',
                                'mag': 'jAperMag3', 'distance': 'distance'}
                   }
 
@@ -61,9 +66,16 @@ datalab_offset_dict = {'des_dr1.main': {'ra': 'ra', 'dec': 'dec',
 
 # To add more surveys from the VISTA Science Archive, this dictionary can be
 # expanded:
-vsa_info_dict = {'vhsdr6': ('VHS','VHSDR6','tilestack')}
+vsa_info_dict = {'vhsdr6': ('VHS', 'VHSDR6', 'tilestack'),
+                 # new, needs to be tested
+                 'vikingdr5': ('VIKING', 'VIKINGDR5', 'tilestack')}
 
+# Surveys as serviced by VSA, append list if necessary (see VSA dictionary
+# above)
+vsa_survey_list = ['vhsdr6', 'vikingdr5']
 
+# all surveys that directly allow to download fits files
+unzipped_download_list = ['desdr1', 'ps1', 'vhsdr6', 'vikingdr5', '2MASS']
 
 # ------------------------------------------------------------------------------
 #  Input table manipulation
@@ -131,7 +143,7 @@ def fits_to_hdf(filename):
 
     # update the dtype for the DataFrame
     print(dtype_dict)
-    df.astype(dtype_dict, inplace=True)
+    # df = df.astype(dtype_dict)
 
     df.to_hdf(filename+'.hdf5', 'data', format='table')
 
@@ -297,7 +309,7 @@ def get_astroquery_offset(target_name, target_ra, target_dec, radius, catalog,
     dr = astroquery_dict[catalog]['data_release']
 
     df = query_region_astroquery(target_ra, target_dec, radius, service, cat,
-                                 dr)
+                                 dr).copy()
 
     if quality_query is not None:
         df.query(quality_query, inplace=True)
@@ -629,7 +641,7 @@ def query_region_datalab(ra, dec, radius, survey='des_dr1', table='main',
     return df
 
 
-def query_region_ps1(ra, dec, radius, survey='dr1', catalog='mean',
+def query_region_ps1(ra, dec, radius, survey='dr2', catalog='mean',
                      add_criteria=None, verbosity=0):
     """ Returns the catalog data of sources within a given radius of a defined
     position using the MAST website.
@@ -926,6 +938,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
             ra = table.loc[idx, ra_col_name]
             dec = table.loc[idx, dec_col_name]
 
+
             if survey == "ps1" and band in ["g", "r", "i", "z", "y"]:
                 img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
                            band + "_fov" + '{:d}'.format(fov)
@@ -945,7 +958,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                 else:
                     url = None
 
-            elif survey in ['vhsdr6'] and band in ['J', 'H', 'Ks']:
+            elif survey in vsa_survey_list and band in ['J', 'H', 'Ks']:
 
                 vsa_info = get_vsa_info(survey)
 
@@ -1012,11 +1025,26 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                 else:
                     url = None
 
+            elif survey == "2MASS":
+
+                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                           band + "_fov" + '{:d}'.format(fov)
+
+                file_path = image_folder_path + '/' + img_name + '.fits'
+                file_exists = os.path.isfile(file_path)
+
+                if file_exists is not True:
+                    url = get_tmass_image_url(ra, dec, fov, band,
+                                              verbosity=verbosity)
+
+                else:
+                    url = None
+
             else:
                 raise ValueError("Survey and band name not recognized: {} {}. "
                                  "\n "
                                  "Possible survey names include: desdr1, ps1,"
-                                 "vhsdr6, "
+                                 "vhsdr6, vikingdr5,"
                                  "unwise-allwise, unwise-neo1, unwise-neo2, "
                                  "unwise-neo3".format(survey, band))
 
@@ -1138,6 +1166,8 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
     # Adding PanSTARRS 1 download here for multiprocessing. However it would
     # be faster to implement not all objects per "band" multiprocessing,
     # but all bands per object multiprocessing for PS1.
+    print(ra, dec)
+
     if survey == "ps1" and band in ["g", "r", "i", "z", "y"]:
         img_name = temp_object_name + "_" + survey + "_" + \
                    band + "_fov" + '{:d}'.format(fov)
@@ -1157,7 +1187,7 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
         else:
             url = None
 
-    elif survey in ['vhsdr6'] and band in ['J', 'H', 'Ks']:
+    elif survey in vsa_survey_list and band in ['J', 'H', 'Ks']:
 
         if vsa_info is not None:
 
@@ -1220,6 +1250,20 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
         else:
             url = None
 
+    elif survey == "2MASS":
+
+        img_name = temp_object_name + "_" + survey + "_" + \
+                   band + "_fov" + '{:d}'.format(fov)
+
+        file_path = image_folder_path + '/' + img_name + '.fits'
+        file_exists = os.path.isfile(file_path)
+
+        if file_exists is not True:
+            url = get_tmass_image_url(ra, dec, fov, band, verbosity=verbosity)
+
+        else:
+            url = None
+
     else:
         raise ValueError("Survey and band name not recognized: {} {}. "
                          "\n "
@@ -1266,7 +1310,7 @@ def download_image(url, image_name, image_folder_path, verbosity=0):
 
         if check_ok:
 
-            if survey in ['desdr1', 'ps1', 'vhsdr6']:
+            if survey in unzipped_download_list:
 
                 file = datafile.read()
 
@@ -1304,7 +1348,7 @@ def download_image(url, image_name, image_folder_path, verbosity=0):
                 raise ValueError("Survey name not recognized: {}. "
                                  "\n "
                                  "Possible survey names include: desdr1, ps1, "
-                                 "vhsdr6, "
+                                 "vhsdr6, 2MASS, "
                                  "unwise-allwise, unwise-neo1, unwise-neo2, "
                                  "unwise-neo3".format(survey))
 
@@ -1400,6 +1444,86 @@ def get_ps1_image_cutout_url(ra, dec, fov, bands='g', verbosity=0):
         return url_list
     else:
         return None
+
+
+def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
+
+    print(ra, dec, fov)
+
+    fov = fov / 3600.
+
+    def_access_url = "https://irsa.ipac.caltech.edu/cgi-bin/2MASS/IM/nph-im_sia"
+
+    svc = sia.SIAService(def_access_url)
+
+    if verbosity > 0:
+        print(svc)
+
+    siaresults = None
+    if isinstance(svc, sia.SIAService):
+        try:
+            siaresults = svc.search((ra, dec), size=0.1, intersect="covers")
+            # self, pos, size = 1.0, format = 'all', intersect = "overlaps",
+            # verbosity = 2, ** keywords)
+        except pyvo.dal.DALQueryError as err:
+            print(err)
+            siaresults = None
+
+    if isinstance(siaresults, sia.SIAResults):
+
+        try:
+            img_table = siaresults.to_table()
+
+        except:
+            img_table = siaresults.table
+
+        if verbosity > 0:
+            print("The full image list contains", len(img_table), "entries")
+
+        # columns for tmass SIA
+        # 'name', 'download', 'center_ra', 'center_dec', 'naxes', 'naxis', 'scale',\
+        # 'format', 'crpix', 'crval', 'crota2', 'band', 'bref', 'bhi', 'blo', 'pers_art', 'glint_art',\
+        # 'type', 'dataset', 'pixflags', 'id', 'scntr', 'date', 'hem', 'scan', 'image',\
+        # 'ut_date', 'coadd_key', 'seesh', 'magzp', 'msnr10', 'bin'
+
+
+        sel_band = img_table['band'].astype(str) == band
+
+        # basic selection
+        table = img_table[sel_band]  # select
+
+        df = table['name', 'download', 'center_ra', 'center_dec'].to_pandas()
+
+        # calculate image center and object separation
+        from astropy import units as u
+        from astropy.coordinates import SkyCoord
+
+        c1 = SkyCoord(table['center_ra'], table['center_dec'], frame='icrs')
+        c2 = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')
+        sep = c1.separation(c2)
+
+        df['distance'] = sep.arcsecond
+        print(df)
+        if df.shape[0] > 0:
+            df.sort_values('distance', inplace=True)
+            row = 0 # pick first row (closest center position to ra,dec)
+            url = df.loc[row, 'download'].decode()  # get the download URL
+
+            if verbosity > 0:
+                print('downloading deepest stacked image...')
+                print('{}'.format(url))
+
+        else:
+            if verbosity > 0:
+                print('No image available.')
+            url = None
+
+        return url
+
+    else:
+        print('SIA Error')
+        return None
+
 
 
 def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
