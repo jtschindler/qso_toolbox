@@ -934,6 +934,14 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
         survey = surveys[jdx]
         fov = fovs[jdx]
 
+        # Hack to check if the issue is with opening too many services
+        if survey == "desdr1":
+            # Set the DES DR1 NOAO sia url
+            def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+            svc = sia.SIAService(def_access_url)
+        else:
+            svc = None
+
         for idx in table.index:
             ra = table.loc[idx, ra_col_name]
             dec = table.loc[idx, dec_col_name]
@@ -997,7 +1005,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                 file_exists = os.path.isfile(file_path)
 
                 if file_exists is not True:
-                    url = get_desdr1_deepest_image_url(ra, dec, fov=fov,
+                    url = get_desdr1_deepest_image_url(ra, dec, svc=svc,
+                                                       fov=fov,
                                                    band=band,
                                                    verbosity=verbosity)
                 else:
@@ -1105,7 +1114,6 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
     """
 
 
-
     table, table_format = check_if_table_is_pandas_dataframe(table)
 
     table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
@@ -1119,6 +1127,14 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
         vsa_info = get_vsa_info(survey)
 
+        # Hack to check if the issue is with opening too many services
+        if survey == "desdr1":
+            # Set the DES DR1 NOAO sia url
+            def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+            svc = sia.SIAService(def_access_url)
+        else:
+            svc = None
+
         mp_args = list(zip(table[ra_col_name].values,
                            table[dec_col_name].values,
                            itertools.repeat(survey),
@@ -1127,6 +1143,7 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
                            itertools.repeat(image_folder_path),
                            table['temp_object_name'].values,
                            itertools.repeat(vsa_info),
+                           itertools.repeat(svc),
                            itertools.repeat(verbosity)))
 
 
@@ -1137,7 +1154,7 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
 
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
-                            temp_object_name, vsa_info, verbosity):
+                            temp_object_name, vsa_info, svc, verbosity):
     """Download one photometric image.
 
     This function is designed to be an internal function to be called by the
@@ -1166,6 +1183,7 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
     # Adding PanSTARRS 1 download here for multiprocessing. However it would
     # be faster to implement not all objects per "band" multiprocessing,
     # but all bands per object multiprocessing for PS1.
+
     print(ra, dec)
 
     if survey == "ps1" and band in ["g", "r", "i", "z", "y"]:
@@ -1223,7 +1241,7 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
         file_exists = os.path.isfile(file_path)
 
         if file_exists is not True:
-            url = get_desdr1_deepest_image_url(ra, dec, fov=fov,
+            url = get_desdr1_deepest_image_url(ra, dec, svc=svc, fov=fov,
                                                band=band,
                                                verbosity=verbosity)
         else:
@@ -1526,7 +1544,8 @@ def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
 
 
 
-def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
+def get_desdr1_deepest_image_url(ra, dec, svc=None, fov=6, band='g', \
+                                                               verbosity=0):
     """Return the url from where the DES DR1 cutout can be downloaded.
 
     :param ra: float
@@ -1542,11 +1561,13 @@ def get_desdr1_deepest_image_url(ra, dec, fov=6, band='g', verbosity=0):
     :return: str
         Returns the url to the DES DR1 image cutout
     """
-    import time
-    time.sleep(2)
-    # Set the DES DR1 NOAO sia url
-    def_access_url = "https://datalab.noao.edu/sia/des_dr1"
-    svc = sia.SIAService(def_access_url)
+
+    # import time
+    # time.sleep(2)
+    # # Set the DES DR1 NOAO sia url
+    if svc is None:
+        def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+        svc = sia.SIAService(def_access_url)
 
     if verbosity > 0:
         print(svc)
