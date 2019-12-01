@@ -14,6 +14,7 @@ import astropy.units as u
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy.io import ascii, fits
+from astropy import utils, io
 
 from astroquery.vizier import Vizier
 from astroquery.irsa import Irsa
@@ -1011,6 +1012,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                                                    verbosity=verbosity)
                 else:
                     url = None
+                    if verbosity > 1:
+                        print('File already exists')
 
             elif survey.split("-")[0] == "unwise" and band in ["w1", "w2",
                                                                "w3", "w4"]:
@@ -1562,8 +1565,8 @@ def get_desdr1_deepest_image_url(ra, dec, svc=None, fov=6, band='g', \
         Returns the url to the DES DR1 image cutout
     """
 
-    # import time
-    # time.sleep(2)
+    import time
+    time.sleep(2)
     # # Set the DES DR1 NOAO sia url
     if svc is None:
         def_access_url = "https://datalab.noao.edu/sia/des_dr1"
