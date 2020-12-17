@@ -19,6 +19,7 @@ from astropy import utils, io
 from astroquery.vizier import Vizier
 from astroquery.irsa import Irsa
 from astroquery.vsa import Vsa
+from astroquery.sdss import SDSS
 
 from dl import queryClient as qc
 
@@ -59,6 +60,11 @@ astroquery_dict = {
                                'ra': 'ra', 'dec': 'dec',
                                'data_release': 'VIKINGDR5', 'mag_name': 'VHS_J',
                                'mag': 'jAperMag3', 'distance': 'distance'}
+    # ,
+    #                 'sdss': {'service': 'sdss', 'catalog': 'VIKING',
+    #                            'ra': 'ra', 'dec': 'dec',
+    #                            'data_release': 'VIKINGDR5', 'mag_name': 'VHS_J',
+    #                            'mag': 'jAperMag3', 'distance': 'distance'}
                   }
 
 datalab_offset_dict = {'des_dr1.main': {'ra': 'ra', 'dec': 'dec',
@@ -76,7 +82,8 @@ vsa_info_dict = {'vhsdr6': ('VHS', 'VHSDR6', 'tilestack'),
 vsa_survey_list = ['vhsdr6', 'vikingdr5']
 
 # all surveys that directly allow to download fits files
-unzipped_download_list = ['desdr1', 'ps1', 'vhsdr6', 'vikingdr5', '2MASS']
+unzipped_download_list = ['desdr1', 'ps1', 'vhsdr6', 'vikingdr5', '2MASS',
+                          'DSS2']
 
 # ------------------------------------------------------------------------------
 #  Input table manipulation
@@ -263,6 +270,9 @@ def query_region_astroquery(ra, dec, radius, service, catalog,
     elif service == 'vsa':
         result = Vsa.query_region(target_coord, radius=radius * u.arcsecond,
                                    programme_id=catalog, database=data_release)
+    # elif service == 'sdss':
+    #     result = SDSS.query_region(target_coord, radius=radius * u.arcsecond,
+    #                               programme_id=catalog, database=data_release)
     else:
         raise KeyError('Astroquery class not recognized. Implemented classes '
                        'are: Vizier, Irsa, VSA')
@@ -765,11 +775,11 @@ def get_ps1_offset_star(target_name, target_ra, target_dec, radius=300,
                 idx, 'offset_shortname'] = target_name + '_offset_' + letter
 
         if catalog == 'mean':
-            mag = 'ps1_' + data_release + '_mean_psfmag_z'
-            offset_df.loc[:, mag] = df.zMeanPSFMag
+            mag = 'ps1_' + data_release + '_mean_psfmag_y'
+            offset_df.loc[:, mag] = df.yMeanPSFMag
         elif catalog == 'stack':
-            mag = 'ps1_' + data_release + '_stack_psfmag_z'
-            offset_df.loc[:, mag] = df.zPSFMag
+            mag = 'ps1_' + data_release + '_stack_psfmag_y'
+            offset_df.loc[:, mag] = df.yPSFMag
         else:
             raise ValueError(
                 'Catalog value not understood ["mean","stack"] :{}'.format(catalog))
@@ -807,7 +817,7 @@ def get_ps1_offset_star(target_name, target_ra, target_dec, radius=300,
 
 def get_offset_stars_ps1(df, target_name_column, target_ra_column,
                      target_dec_column, radius, data_release='dr2',
-                     catalog='mean', quality_query=None, verbosity=0):
+                     catalog='mean', quality_query=None, n=3, verbosity=0):
     """Get offset stars for all targets in the input DataFrame for PanSTARRS
     using the MAST website.
 
@@ -855,7 +865,7 @@ def get_offset_stars_ps1(df, target_name_column, target_ra_column,
         temp_df = get_ps1_offset_star(target_name, target_ra, target_dec,
                                         radius=radius, catalog=catalog,
                                         data_release=data_release,
-                                        quality_query=quality_query,
+                                        quality_query=quality_query, n=n,
                                       verbosity=verbosity)
 
 
@@ -1052,6 +1062,25 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                 else:
                     url = None
 
+            elif survey == "DSS2":
+
+                # bands are 'dss2b' 'dss2r' 'dss2ir'
+
+                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                           band + "_fov" + '{:d}'.format(fov)
+
+                file_path = image_folder_path + '/' + img_name + '.fits'
+                file_exists = os.path.isfile(file_path)
+
+
+                if file_exists is not True:
+                    url = get_dss_image_url(ra, dec, fov, band,
+                                              verbosity=verbosity)
+
+                else:
+                    url = None
+
+
             else:
                 raise ValueError("Survey and band name not recognized: {} {}. "
                                  "\n "
@@ -1130,13 +1159,13 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
         vsa_info = get_vsa_info(survey)
 
-        # Hack to check if the issue is with opening too many services
-        if survey == "desdr1":
-            # Set the DES DR1 NOAO sia url
-            def_access_url = "https://datalab.noao.edu/sia/des_dr1"
-            svc = sia.SIAService(def_access_url)
-        else:
-            svc = None
+        # # Hack to check if the issue is with opening too many services
+        # if survey == "desdr1":
+        #     # Set the DES DR1 NOAO sia url
+        #     def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+        #     svc = sia.SIAService(def_access_url)
+        # else:
+        #     svc = None
 
         mp_args = list(zip(table[ra_col_name].values,
                            table[dec_col_name].values,
@@ -1146,7 +1175,7 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
                            itertools.repeat(image_folder_path),
                            table['temp_object_name'].values,
                            itertools.repeat(vsa_info),
-                           itertools.repeat(svc),
+                           # itertools.repeat(svc),
                            itertools.repeat(verbosity)))
 
 
@@ -1157,7 +1186,7 @@ def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
 
 
 def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
-                            temp_object_name, vsa_info, svc, verbosity):
+                            temp_object_name, vsa_info, verbosity):
     """Download one photometric image.
 
     This function is designed to be an internal function to be called by the
@@ -1187,7 +1216,6 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
     # be faster to implement not all objects per "band" multiprocessing,
     # but all bands per object multiprocessing for PS1.
 
-    print(ra, dec)
 
     if survey == "ps1" and band in ["g", "r", "i", "z", "y"]:
         img_name = temp_object_name + "_" + survey + "_" + \
@@ -1207,6 +1235,8 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
 
         else:
             url = None
+            if verbosity > 1:
+                print('File already exists')
 
     elif survey in vsa_survey_list and band in ['J', 'H', 'Ks']:
 
@@ -1237,6 +1267,9 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
                   'not possible.'.format(survey))
 
     elif survey == "desdr1":
+        def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+        svc = sia.SIAService(def_access_url)
+
         img_name = temp_object_name + "_" + survey + "_" + \
                    band + "_fov" + '{:d}'.format(fov)
 
@@ -1249,6 +1282,8 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
                                                verbosity=verbosity)
         else:
             url = None
+
+        print(url)
 
     elif survey.split("-")[0] == "unwise" and band in ["w1", "w2",
                                                        "w3", "w4"]:
@@ -1281,6 +1316,23 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
 
         if file_exists is not True:
             url = get_tmass_image_url(ra, dec, fov, band, verbosity=verbosity)
+
+        else:
+            url = None
+
+    elif survey == "DSS2":
+
+        # bands are 'dss2b' 'dss2r' 'dss2ir'
+
+        img_name = temp_object_name + "_" + survey + "_" + \
+                   band + "_fov" + '{:d}'.format(fov)
+
+        file_path = image_folder_path + '/' + img_name + '.fits'
+        file_exists = os.path.isfile(file_path)
+
+        if file_exists is not True:
+            url = get_dss_image_url(ra, dec, fov, band,
+                                    verbosity=verbosity)
 
         else:
             url = None
@@ -1467,13 +1519,14 @@ def get_ps1_image_cutout_url(ra, dec, fov, bands='g', verbosity=0):
         return None
 
 
-def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
-
-    print(ra, dec, fov)
+def get_dss_image_url(ra, dec, fov, band, verbosity=0):
 
     fov = fov / 3600.
 
-    def_access_url = "https://irsa.ipac.caltech.edu/cgi-bin/2MASS/IM/nph-im_sia"
+    if fov < 0.25:
+        fov = 0.25
+
+    def_access_url = "http://skyview.gsfc.nasa.gov/cgi-bin/vo/sia.pl?survey=dss2&"
 
     svc = sia.SIAService(def_access_url)
 
@@ -1483,7 +1536,105 @@ def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
     siaresults = None
     if isinstance(svc, sia.SIAService):
         try:
-            siaresults = svc.search((ra, dec), size=0.1, intersect="covers")
+            siaresults = svc.search((ra, dec), size=fov)
+
+        except pyvo.dal.DALQueryError as err:
+            print(err)
+            siaresults = None
+
+    if isinstance(siaresults, sia.SIAResults):
+
+        try:
+            img_table = siaresults.to_table()
+
+        except:
+            img_table = siaresults.table
+
+        if verbosity > 0:
+            print("The full image list contains", len(img_table), "entries")
+
+        # ('Survey',
+        #  'Ra',
+        #  'Dec',
+        #  'Dim',
+        #  'Size',
+        #  'Scale',
+        #  'Format',
+        #  'PixFlags',
+        #  'URL',
+        #  'LogicalName')
+
+        sel_band = img_table['Survey'].astype(str) == band
+
+        # basic selection
+        table = img_table[sel_band]  # select
+
+        df = table['URL', 'Ra', 'Dec'].to_pandas()
+
+        # calculate image center and object separation
+        from astropy import units as u
+        from astropy.coordinates import SkyCoord
+
+        c1 = SkyCoord(table['Ra']*u.deg, table['Dec']*u.deg, frame='icrs')
+        c2 = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')
+        sep = c1.separation(c2)
+
+        df['distance'] = sep.arcsecond
+        print(df)
+        if df.shape[0] > 0:
+            df.sort_values('distance', inplace=True)
+            row = 0 # pick first row (closest center position to ra,dec)
+            url = df.loc[row, 'URL'].decode()  # get the download URL
+
+            if verbosity > 0:
+                print('downloading deepest stacked image...')
+                print('{}'.format(url))
+
+        else:
+            if verbosity > 0:
+                print('No image available.')
+            url = None
+
+        return url
+
+    else:
+        print('SIA Error')
+        return None
+
+def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
+
+
+
+    fov = fov / 3600.
+
+    if fov <= 0.25:
+        fov = 0.25
+
+    #old
+    # def_access_url = "https://irsa.ipac.caltech.edu/cgi-bin/2MASS/IM/nph-im_sia"
+
+    if band == 'J':
+        def_access_url = "http://skyview.gsfc.nasa.gov/cgi-bin/vo/sia.pl" \
+                         "?survey=2massj&"
+        surveyband = '2massj'
+    elif band == 'H':
+        def_access_url = "http://skyview.gsfc.nasa.gov/cgi-bin/vo/sia.pl" \
+                         "?survey=2massh&"
+        surveyband = '2massh'
+    elif band == 'K':
+        def_access_url = "http://skyview.gsfc.nasa.gov/cgi-bin/vo/sia.pl" \
+                         "?survey=2massk&"
+        surveyband = '2massk'
+    else:
+        raise ValueError("2MASS band (J, H, K) not understood: {}".format(band))
+
+    svc = sia.SIAService(def_access_url)
+
+
+    siaresults = None
+    if isinstance(svc, sia.SIAService):
+        try:
+            siaresults = svc.search((ra, dec), size=fov)
             # self, pos, size = 1.0, format = 'all', intersect = "overlaps",
             # verbosity = 2, ** keywords)
         except pyvo.dal.DALQueryError as err:
@@ -1507,19 +1658,32 @@ def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
         # 'type', 'dataset', 'pixflags', 'id', 'scntr', 'date', 'hem', 'scan', 'image',\
         # 'ut_date', 'coadd_key', 'seesh', 'magzp', 'msnr10', 'bin'
 
+        #NEW FIELDNAMES
+        # ('Survey',
+        #  'Ra',
+        #  'Dec',
+        #  'Dim',
+        #  'Size',
+        #  'Scale',
+        #  'Format',
+        #  'PixFlags',
+        #  'URL',
+        #  'LogicalName')
 
-        sel_band = img_table['band'].astype(str) == band
+
+        sel_band = img_table['Survey'].astype(str) == surveyband
 
         # basic selection
         table = img_table[sel_band]  # select
 
-        df = table['name', 'download', 'center_ra', 'center_dec'].to_pandas()
+        df = table['URL', 'Ra', 'Dec'].to_pandas()
 
         # calculate image center and object separation
         from astropy import units as u
         from astropy.coordinates import SkyCoord
 
-        c1 = SkyCoord(table['center_ra'], table['center_dec'], frame='icrs')
+        c1 = SkyCoord(table['Ra']*u.deg, table['Dec']*u.deg,
+                      frame='icrs')
         c2 = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')
         sep = c1.separation(c2)
 
@@ -1528,7 +1692,7 @@ def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
         if df.shape[0] > 0:
             df.sort_values('distance', inplace=True)
             row = 0 # pick first row (closest center position to ra,dec)
-            url = df.loc[row, 'download'].decode()  # get the download URL
+            url = df.loc[row, 'URL'].decode()  # get the download URL
 
             if verbosity > 0:
                 print('downloading deepest stacked image...')
@@ -1565,8 +1729,8 @@ def get_desdr1_deepest_image_url(ra, dec, svc=None, fov=6, band='g', \
         Returns the url to the DES DR1 image cutout
     """
 
-    import time
-    time.sleep(2)
+    # import time
+    # time.sleep(2)
     # # Set the DES DR1 NOAO sia url
     if svc is None:
         def_access_url = "https://datalab.noao.edu/sia/des_dr1"

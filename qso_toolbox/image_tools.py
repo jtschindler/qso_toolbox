@@ -410,89 +410,93 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
             except:
                 print("Source not in image")
                 overlap = False
+                img_stamp = None
 
-            if overlap:
-                img_stamp = img_stamp.data
 
-            hdu = fits.ImageHDU(data=img_stamp, header=hdr)
+            if img_stamp is not None:
 
-            axs = aplpy.FITSFigure(hdu, figure=fig, subplot=(n_row, n_col,
-                                                                   idx + 1), north=True)
+                if overlap:
+                    img_stamp = img_stamp.data
 
-            # Check if input color map name is a color map, else use viridis
-            try:
-                cm = plt.get_cmap(color_map_name)
-            except ValueError:
-                print('Color map argument is not a color map. Setting '
-                      'default: viridis')
-                cm = plt.get_cmap('viridis')
-                color_map_name = 'viridis'
+                hdu = fits.ImageHDU(data=img_stamp, header=hdr)
 
-            # Sigma-clipping of the color scale
-            mean = np.mean(img_stamp[~np.isnan(img_stamp)])
-            std = np.std(img_stamp[~np.isnan(img_stamp)])
-            upp_lim = mean + n_sigma * std
-            low_lim = mean - n_sigma * std
-            axs.show_colorscale(vmin=low_lim, vmax=upp_lim,
-                                cmap=color_map_name)
+                axs = aplpy.FITSFigure(hdu, figure=fig, subplot=(n_row, n_col,
+                                                                       idx + 1), north=True)
 
-            # Plot circular aperture (forced photometry flux)
-            (yy, xx) = img_stamp.shape
-            circx = (xx * 0.5)  # + 1
-            circy = (yy * 0.5)  # + 1
-            aper_pix = aperture_inpixels(aperture, hdr)
-            circle = plt.Circle((circx, circy), aper_pix, color='r', fill=False,
-                                lw=1.5)
-            fig.gca().add_artist(circle)
+                # Check if input color map name is a color map, else use viridis
+                try:
+                    cm = plt.get_cmap(color_map_name)
+                except ValueError:
+                    print('Color map argument is not a color map. Setting '
+                          'default: viridis')
+                    cm = plt.get_cmap('viridis')
+                    color_map_name = 'viridis'
 
-            # Plot rectangular aperture (error region)
-            rect_inpixels = aperture_inpixels(size, hdr)
-            square = plt.Rectangle((circx - rect_inpixels * 0.5,
-                                    circy - rect_inpixels * 0.5),
-                                   rect_inpixels, rect_inpixels,
-                                   color='r', fill=False, lw=1.5)
-            fig.gca().add_artist(square)
+                # Sigma-clipping of the color scale
+                mean = np.mean(img_stamp[~np.isnan(img_stamp)])
+                std = np.std(img_stamp[~np.isnan(img_stamp)])
+                upp_lim = mean + n_sigma * std
+                low_lim = mean - n_sigma * std
+                axs.show_colorscale(vmin=low_lim, vmax=upp_lim,
+                                    cmap=color_map_name)
 
-            # Create forced photometry label
-            if (forced_mag is not None):
-                if (forced_sn is not None) & (forced_magerr is not None):
-                    forcedlabel = r'${0:s} = {1:.2f} \pm {2:.2f} (SN=' \
-                                  r'{3:.1f})$'.format(band + "_{forced}",
-                                                      forced_mag,
-                                                      forced_magerr,
-                                                      forced_sn)
-                elif forced_magerr is not None:
-                    forcedlabel = r'${0:s} = {1:.2f} \pm {2:.2f}$'.format(
-                        band + "_{forced}", forced_mag, forced_magerr)
-                else:
-                    forcedlabel = r'${0:s} = {1:.2f}$'.format(
-                        band + "_{forced}", forced_mag)
+                # Plot circular aperture (forced photometry flux)
+                (yy, xx) = img_stamp.shape
+                circx = (xx * 0.5)  # + 1
+                circy = (yy * 0.5)  # + 1
+                aper_pix = aperture_inpixels(aperture, hdr)
+                circle = plt.Circle((circx, circy), aper_pix, color='r', fill=False,
+                                    lw=1.5)
+                fig.gca().add_artist(circle)
 
-                fig.gca().text(0.03, 0.16, forcedlabel, color='black',
-                         weight='bold', fontsize='large',
-                         bbox=dict(facecolor='white', alpha=0.6),
-                         transform=fig.gca().transAxes)
+                # Plot rectangular aperture (error region)
+                rect_inpixels = aperture_inpixels(size, hdr)
+                square = plt.Rectangle((circx - rect_inpixels * 0.5,
+                                        circy - rect_inpixels * 0.5),
+                                       rect_inpixels, rect_inpixels,
+                                       color='r', fill=False, lw=1.5)
+                fig.gca().add_artist(square)
 
-            # Create catalog magnitude label
-            if catmag is not None:
-                if (catsn is not None) & (caterr is not None):
-                    maglabel = r'${0:s} = {1:.2f} \pm {2:.2f}  (SN=' \
-                               r'{3:.2f})$'.format(
-                        band + "_{cat}", catmag, caterr, catsn)
-                elif caterr is not None:
-                    maglabel = r'${0:s} = {1:.2f} \pm {2:.2f}$'.format(
-                        band + "_{cat}", catmag, caterr)
-                else:
-                    maglabel = r'${0:s} = {1:.2f}$'.format(
-                        band + "_{cat}", catmag)
+                # Create forced photometry label
+                if (forced_mag is not None):
+                    if (forced_sn is not None) & (forced_magerr is not None):
+                        forcedlabel = r'${0:s} = {1:.2f} \pm {2:.2f} (SN=' \
+                                      r'{3:.1f})$'.format(band + "_{forced}",
+                                                          forced_mag,
+                                                          forced_magerr,
+                                                          forced_sn)
+                    elif forced_magerr is not None:
+                        forcedlabel = r'${0:s} = {1:.2f} \pm {2:.2f}$'.format(
+                            band + "_{forced}", forced_mag, forced_magerr)
+                    else:
+                        forcedlabel = r'${0:s} = {1:.2f}$'.format(
+                            band + "_{forced}", forced_mag)
 
-                fig.gca().text(0.03, 0.04, maglabel, color='black',
-                         weight='bold',
-                         fontsize='large',
-                         bbox=dict(facecolor='white', alpha=0.6),
-                         transform=fig.gca().transAxes)
+                    fig.gca().text(0.03, 0.16, forcedlabel, color='black',
+                             weight='bold', fontsize='large',
+                             bbox=dict(facecolor='white', alpha=0.6),
+                             transform=fig.gca().transAxes)
 
-            fig.gca().set_title(survey + " " + band)
+                # Create catalog magnitude label
+                if catmag is not None:
+                    if (catsn is not None) & (caterr is not None):
+                        maglabel = r'${0:s} = {1:.2f} \pm {2:.2f}  (SN=' \
+                                   r'{3:.2f})$'.format(
+                            band + "_{cat}", catmag, caterr, catsn)
+                    elif caterr is not None:
+                        maglabel = r'${0:s} = {1:.2f} \pm {2:.2f}$'.format(
+                            band + "_{cat}", catmag, caterr)
+                    else:
+                        maglabel = r'${0:s} = {1:.2f}$'.format(
+                            band + "_{cat}", catmag)
+
+                    fig.gca().text(0.03, 0.04, maglabel, color='black',
+                             weight='bold',
+                             fontsize='large',
+                             bbox=dict(facecolor='white', alpha=0.6),
+                             transform=fig.gca().transAxes)
+
+                fig.gca().set_title(survey + " " + band)
 
     return fig
 
@@ -504,12 +508,14 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
                         target_column_name, survey, band,
                         aperture, fov, image_folder_path,
                         offset_table=None,
+                        offset_id = 0,
+                        offset_focus = False,
                         offset_ra_column_name=None,
                         offset_dec_column_name=None,
                         pos_angle_column_name=None,
                         offset_mag_column_name=None,
                         offset_id_column_name=None,
-                        offset_finding_chart=True,
+                        # offset_finding_chart=True,
                         label_position='bottom',
                         slit_width=None,
                         slit_length=None,
@@ -538,6 +544,10 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
         Path to where the image will be stored
     :param offset_table: pandas.core.frame.DataFrame
         Pandas dataframe with offset star information for all targets
+    :param offset_id: int
+        Integer indicating the primary offset from the offset table
+    :param offset_focus: boolean
+        Boolean to indicate whether offset star will be in the center or not
     :param offset_ra_column_name: string
         Offset star dataframe right ascension column name
     :param offset_dec_column_name: string
@@ -570,15 +580,8 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
     bands = [band]
     fovs = [fov]
 
-    if auto_download:
-        ct.get_photometry_mp(table, ra_column_name,
-                             dec_column_name,
-                             surveys,
-                             bands,
-                             image_folder_path,
-                             fovs, n_jobs=1,
-                             verbosity=verbosity)
-
+    print(offset_table)
+    print(table)
 
     for idx in table.index:
         ra = table.loc[idx, ra_column_name]
@@ -595,7 +598,21 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
                     position_angle = offset_target.loc[offset_target.index[0],
                                                    pos_angle_column_name]
                 else:
-                    position_angle = 0
+                    target_coords = SkyCoord(ra=ra, dec=dec,
+                                             unit=(u.deg, u.deg),
+                                             frame='icrs')
+                    offset_coords = SkyCoord(ra=offset_target.loc[:,
+                                                offset_ra_column_name].values,
+                                             dec=offset_target.loc[:,
+                                                 offset_dec_column_name].values,
+                                             unit=(u.deg, u.deg),
+                                             frame='icrs')
+                    # Calculate position angles(East of North)
+                    pos_angles = offset_coords.position_angle(target_coords).to(
+                        u.deg)
+                    # Take position angle to offset_id star in list
+                    position_angle = pos_angles[offset_id].to(u.deg).value
+
             else:
                 position_angle = 0
                 offset_target = None
@@ -603,17 +620,46 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
             offset_target = None
             position_angle = 0
 
+        if offset_target is not None:
+            offset_target.reset_index(inplace=True, drop=True)
+
+
+        if auto_download:
+            if offset_focus:
+                ct.get_photometry_mp(offset_target.loc[[0]],
+                                     offset_ra_column_name,
+                                     offset_dec_column_name,
+                                     surveys,
+                                     bands,
+                                     image_folder_path,
+                                     fovs, n_jobs=1,
+                                     verbosity=verbosity)
+            else:
+                ct.get_photometry_mp(table.loc[[idx]],
+                                     ra_column_name,
+                                     dec_column_name,
+                                     surveys,
+                                     bands,
+                                     image_folder_path,
+                                     fovs, n_jobs=1,
+                                     verbosity=verbosity)
+
+
+
         fig = _make_finding_chart(ra, dec, survey, band, aperture, fov,
-                                image_folder_path,
-                                offset_df=offset_target,
-                                offset_ra_column_name=offset_ra_column_name,
-                                offset_dec_column_name=offset_dec_column_name,
-                                offset_mag_column_name=offset_mag_column_name,
-                                offset_id_column_name=offset_id_column_name,
-                                label_position=label_position,
-                                slit_width=slit_width,
-                                slit_length=slit_length,
-                                position_angle=position_angle, verbosity=verbosity)
+                                  image_folder_path,
+                                  offset_df=offset_target,
+                                  offset_id=offset_id,
+                                  offset_focus=offset_focus,
+                                  offset_ra_column_name=offset_ra_column_name,
+                                  offset_dec_column_name=offset_dec_column_name,
+                                  offset_mag_column_name=offset_mag_column_name,
+                                  offset_id_column_name=offset_id_column_name,
+                                  label_position=label_position,
+                                  slit_width=slit_width,
+                                  slit_length=slit_length,
+                                  position_angle=position_angle,
+                                  verbosity=verbosity)
 
         if format == 'pdf':
             fig.save('fc_{}.pdf'.format(target_name), transparent=False)
@@ -623,59 +669,11 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
         print('{} created'.format('fc_{}'.format(target_name)))
 
 
-        # Option to create finding chart with offset star in center
-
-        if offset_table is not None and offset_target is \
-                not None and offset_finding_chart:
-            print (type(offset_target))
-            print (offset_target)
-
-
-
-            offset_ra = offset_target.loc[offset_target.index[0],
-                                          offset_ra_column_name]
-            offset_dec = offset_target.loc[offset_target.index[0],
-                                           offset_dec_column_name]
-
-
-
-            if auto_download:
-                ct.get_photometry(offset_table.loc[offset_target.index[:],:],
-                                  offset_ra_column_name,
-                                     offset_dec_column_name,
-                                     surveys,
-                                     bands,
-                                     image_folder_path,
-                                     fovs,
-                                     # n_jobs=1,
-                                     verbosity=verbosity)
-
-            fig = _make_finding_chart(offset_ra, offset_dec, survey, band,
-                                      aperture,
-                                      fov,
-                                      image_folder_path,
-                                      # offset_df=offset_target,
-                                      # offset_ra_column_name=offset_ra_column_name,
-                                      # offset_dec_column_name=offset_dec_column_name,
-                                      # offset_mag_column_name=offset_mag_column_name,
-                                      # offset_id_column_name=offset_id_column_name,
-                                      label_position=label_position,
-                                      slit_width=slit_width,
-                                      slit_length=slit_length,
-                                      position_angle=position_angle,
-                                      verbosity=verbosity)
-
-            if format == 'pdf':
-                fig.save('fc_{}_off.pdf'.format(target_name), transparent=False)
-            if format == 'png':
-                fig.save('fc_{}_off.png'.format(target_name), transparent=False)
-
-            print('{} created'.format('fc_{}_off'.format(target_name)))
-
-
 def _make_finding_chart(ra, dec, survey, band, aperture, fov,
                         image_folder_path,
                         offset_df=None,
+                        offset_id=0,
+                        offset_focus=False,
                         offset_ra_column_name=None,
                         offset_dec_column_name=None,
                         offset_mag_column_name=None,
@@ -704,6 +702,10 @@ def _make_finding_chart(ra, dec, survey, band, aperture, fov,
         Path to where the image will be stored
     :param offset_df: pandas.core.frame.DataFrame
         Pandas dataframe with offset star information
+    :param offset_id: int
+        Integer indicating the primary offset from the offset table
+    :param offset_focus: boolean
+        Boolean to indicate whether offset star will be in the center or not
     :param offset_ra_column_name: string
         Offset star dataframe right ascension column name
     :param offset_dec_column_name: string
@@ -728,36 +730,40 @@ def _make_finding_chart(ra, dec, survey, band, aperture, fov,
         Return the matplotlib figure of the finding chart.
     """
 
-    # Implemented VSA image download, vhsname is only necessary for manual
-    # downloads, June 30th, maybe revisit later
-    # if survey == 'vhsdr6':
-    #     coord_name = ut.coord_to_vhsname(np.array([ra]), np.array([dec]),
-    #                                      epoch="J")
-    # else:
-    #     coord_name = ut.coord_to_name(np.array([ra]), np.array([dec]),
-    #                                   epoch="J")
 
-    coord_name = ut.coord_to_name(np.array([ra]), np.array([dec]),
+
+    if offset_focus:
+        im_ra = offset_df.loc[offset_id, offset_ra_column_name]
+        im_dec = offset_df.loc[offset_id, offset_dec_column_name]
+    else:
+        im_ra = ra
+        im_dec = dec
+
+    coord_name = ut.coord_to_name(np.array([im_ra]), np.array([im_dec]),
                                   epoch="J")
 
     filename = image_folder_path + '/' + coord_name[0] + "_" + survey + "_" + \
                band + "*.fits"
 
-    data, hdr, file_path = open_image(filename, ra, dec, fov, image_folder_path,
-                           verbosity=verbosity)
+    data, hdr, file_path = open_image(filename, im_ra, im_dec,
+                                      fov,
+                                      image_folder_path,
+                                      verbosity=verbosity)
+
+    # Define SkyOffsetFrame for rotation based on position_angle
+    center = SkyCoord(im_ra* u.deg, im_dec * u.deg, frame='icrs')
+    rotatedFrame = center.skyoffset_frame(rotation=position_angle * u.deg)
+    print(rotatedFrame)
 
     if data is not None:
         # Plotting routine from here on.
         hdu = fits.PrimaryHDU(data, hdr)
 
-
         # De-rotate image along the position angle
-
-        fig = aplpy.FITSFigure(hdu, north=True)
-
+        fig = aplpy.FITSFigure(hdu)
 
         if fov is not None:
-            fig.recenter(ra, dec, radius=fov / 3600. * 0.5)
+            fig.recenter(im_ra, im_dec, radius=fov / 3600. * 0.5)
 
         try:
             zscale = ZScaleInterval()
@@ -767,19 +773,23 @@ def _make_finding_chart(ra, dec, survey, band, aperture, fov,
             print('Exception encountered: {}'.format(str(e)))
             fig.show_grayscale(pmin=10, pmax=99)
 
-        fig.add_scalebar(fov/4/3600., '{:.1f} arcminutes'.format(fov/4/60.),
+        fig.add_scalebar(fov/4/3600., '{:.1f} arcmin'.format(fov/4/60.),
                          color='black',
                          font='serif',
                          linewidth=4)
 
-        _plot_slit(fig, ra, dec, slit_length, slit_width, position_angle)
+        if slit_length is not None and slit_width is not None:
+            _plot_slit(fig, im_ra, im_dec, slit_length, slit_width,
+                       position_angle)
+
 
         if offset_df is not None and offset_ra_column_name is not None and \
             offset_dec_column_name is not None and offset_mag_column_name is \
             not None and offset_id_column_name is not None:
-            # c = SkyCoord(ra=ra, dec=dec, unit=(u.degree, u.degree))
+            print("[INFO] Generating offsets for {}".format(filename))
 
             _plot_offset_stars(fig, ra, dec, offset_df, fov,
+                               offset_id,
                                offset_ra_column_name,
                                offset_dec_column_name,
                                offset_mag_column_name,
@@ -837,20 +847,30 @@ def _plot_slit(fig, ra, dec, slit_length, slit_width, position_angle):
 position_dict = {"left": [8, 0], "right": [-8, 0], "top": [0, 5],
                  "bottom": [0, -5], "topleft": [8, 5]}
 
-def _plot_offset_stars(fig, ra, dec, offset_df, fov, ra_column_name,
+def _plot_offset_stars(fig, ra, dec, offset_df, fov, offset_id,
+                       ra_column_name,
                        dec_column_name,
-                       mag_column_name, id_column_name, label_position="left"):
+                       mag_column_name,
+                       id_column_name,
+                       label_position="left"):
 
     # Check if star is in image
 
-    radius = fov / 15. / 3600.
+    radius = fov / 25. / 3600.
 
     ra_pos, dec_pos = position_dict[label_position]
 
-    fig.show_rectangles(offset_df[ra_column_name], offset_df[dec_column_name],
+    fig.show_circles(xw=offset_df.loc[offset_id, ra_column_name],
+                     yw=offset_df.loc[offset_id, dec_column_name],
+                     radius=3 / 3600.,
+                     edgecolor='blue',
+                     lw=3)
+
+    fig.show_rectangles(offset_df.drop(offset_id)[ra_column_name],
+                        offset_df.drop(offset_id)[dec_column_name],
                         radius, radius, edgecolor='blue', lw=2)
 
-    abc_dict = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4:'E'}
+    abc_dict = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E'}
 
     for num, idx in enumerate(offset_df.index):
         ra_off = offset_df.loc[idx, ra_column_name]
@@ -868,9 +888,16 @@ def _plot_offset_stars(fig, ra, dec, offset_df, fov, ra_column_name,
         label = '{}'.format(abc_dict[num])
 
         if separation.value <= fov/2.:
-            fig.add_label(ra_off + ra_pos * radius/8., dec_off + dec_pos *
-                          radius/8., label,
-                          color='blue', size='x-large',
+            if idx == offset_id:
+                fig.add_label(ra_off + ra_pos * 3 / 3600. / 3.,
+                              dec_off + dec_pos * 3 / 3600. / 3., label,
+                              color='blue', size='x-large',
+                              verticalalignment='center', family='serif')
+
+            else:
+                fig.add_label(ra_off + ra_pos * radius/5., dec_off + dec_pos *
+                          radius/5., label,
+                          color='blue', size='large',
                           verticalalignment='center', family='serif')
 
 
