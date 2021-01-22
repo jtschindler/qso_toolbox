@@ -173,13 +173,6 @@ def open_image(filename, ra, dec, fov, image_folder_path, verbosity=0):
                 file_fov = 9999999
 
             if fov <= file_fov:
-                # hdu = fits.open(filename)
-                # hdu = montage.reproject_hdu(hdu[0], north_aligned=True)
-                # image = hdu.data
-                # nans = np.isnan(image)
-                # image[nans] = 0
-                # header = hdu.header
-                # wcs = WCS(header)
                 data, hdr = fits.getdata(filename, header=True)
                 file_found = True
                 file_path =filename
@@ -571,7 +564,6 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
         Possible formats: 'pdf', 'png'
     :param auto_download: boolean
         Boolean to indicate whether images should be automatically downloaded.
-        NOT IMPLEMENTED YET.
     :param verbosity:
         Verbosity > 0 will print verbose statements during the execution.
     """
@@ -626,40 +618,42 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
 
         if auto_download:
             if offset_focus:
-                ct.get_photometry_mp(offset_target.loc[[0]],
+                ct.get_photometry(offset_target.loc[[0]],
                                      offset_ra_column_name,
                                      offset_dec_column_name,
                                      surveys,
                                      bands,
                                      image_folder_path,
-                                     fovs, n_jobs=1,
+                                     fovs,
+                                     # n_jobs=1,
                                      verbosity=verbosity)
             else:
-                ct.get_photometry_mp(table.loc[[idx]],
+                ct.get_photometry(table.loc[[idx]],
                                      ra_column_name,
                                      dec_column_name,
                                      surveys,
                                      bands,
                                      image_folder_path,
-                                     fovs, n_jobs=1,
+                                     fovs,
+                                     # n_jobs=1,
                                      verbosity=verbosity)
 
 
 
-        fig = _make_finding_chart(ra, dec, survey, band, aperture, fov,
-                                  image_folder_path,
-                                  offset_df=offset_target,
-                                  offset_id=offset_id,
-                                  offset_focus=offset_focus,
-                                  offset_ra_column_name=offset_ra_column_name,
-                                  offset_dec_column_name=offset_dec_column_name,
-                                  offset_mag_column_name=offset_mag_column_name,
-                                  offset_id_column_name=offset_id_column_name,
-                                  label_position=label_position,
-                                  slit_width=slit_width,
-                                  slit_length=slit_length,
-                                  position_angle=position_angle,
-                                  verbosity=verbosity)
+        fig = make_finding_chart(ra, dec, survey, band, aperture, fov,
+                                 image_folder_path,
+                                 offset_df=offset_target,
+                                 offset_id=offset_id,
+                                 offset_focus=offset_focus,
+                                 offset_ra_column_name=offset_ra_column_name,
+                                 offset_dec_column_name=offset_dec_column_name,
+                                 offset_mag_column_name=offset_mag_column_name,
+                                 offset_id_column_name=offset_id_column_name,
+                                 label_position=label_position,
+                                 slit_width=slit_width,
+                                 slit_length=slit_length,
+                                 position_angle=position_angle,
+                                 verbosity=verbosity)
 
         if format == 'pdf':
             fig.save('fc_{}.pdf'.format(target_name), transparent=False)
@@ -669,18 +663,18 @@ def make_finding_charts(table, ra_column_name, dec_column_name,
         print('{} created'.format('fc_{}'.format(target_name)))
 
 
-def _make_finding_chart(ra, dec, survey, band, aperture, fov,
-                        image_folder_path,
-                        offset_df=None,
-                        offset_id=0,
-                        offset_focus=False,
-                        offset_ra_column_name=None,
-                        offset_dec_column_name=None,
-                        offset_mag_column_name=None,
-                        offset_id_column_name=None,
-                        label_position='bottom',
-                        slit_width=None, slit_length=None,
-                        position_angle=None, verbosity=0):
+def make_finding_chart(ra, dec, survey, band, aperture, fov,
+                       image_folder_path,
+                       offset_df=None,
+                       offset_id=0,
+                       offset_focus=False,
+                       offset_ra_column_name=None,
+                       offset_dec_column_name=None,
+                       offset_mag_column_name=None,
+                       offset_id_column_name=None,
+                       label_position='bottom',
+                       slit_width=None, slit_length=None,
+                       position_angle=None, verbosity=0):
 
     """Make the finding chart figure and return it.
 
@@ -750,10 +744,32 @@ def _make_finding_chart(ra, dec, survey, band, aperture, fov,
                                       image_folder_path,
                                       verbosity=verbosity)
 
-    # Define SkyOffsetFrame for rotation based on position_angle
-    center = SkyCoord(im_ra* u.deg, im_dec * u.deg, frame='icrs')
-    rotatedFrame = center.skyoffset_frame(rotation=position_angle * u.deg)
-    print(rotatedFrame)
+    # Reproject data if position angle is specified
+    if position_angle != 0:
+        hdr['CRPIX1'] = int(hdr['NAXIS1'] / 2.)
+        hdr['CRPIX2'] = int(hdr['NAXIS2'] / 2.)
+        hdr['CRVAL1'] = im_ra
+        hdr['CRVAL2'] = im_dec
+
+        new_hdr = hdr.copy()
+
+        pa_rad = np.deg2rad(position_angle)
+
+        # TODO: Note that the rotation definition here reflects one axis
+        # TODO: to make sure that it is a rotated version of north up east left
+        # TODO: both 001 components have a negative sign!
+        new_hdr['PC001001'] = -np.cos(pa_rad)
+        new_hdr['PC001002'] = np.sin(pa_rad)
+        new_hdr['PC002001'] = np.sin(pa_rad)
+        new_hdr['PC002002'] = np.cos(pa_rad)
+
+        from reproject import reproject_interp
+
+        data, footprint = reproject_interp((data, hdr),
+                                           new_hdr,
+                                           shape_out=[hdr['NAXIS1'],
+                                                      hdr['NAXIS2']])
+        hdr = new_hdr
 
     if data is not None:
         # Plotting routine from here on.
@@ -779,8 +795,13 @@ def _make_finding_chart(ra, dec, survey, band, aperture, fov,
                          linewidth=4)
 
         if slit_length is not None and slit_width is not None:
-            _plot_slit(fig, im_ra, im_dec, slit_length, slit_width,
-                       position_angle)
+
+            if position_angle == 0:
+                _plot_slit(fig, im_ra, im_dec, slit_length, slit_width,
+                           position_angle)
+            else:
+                _plot_slit(fig, im_ra, im_dec, slit_length, slit_width,
+                           0)
 
 
         if offset_df is not None and offset_ra_column_name is not None and \
@@ -822,26 +843,26 @@ def _make_finding_chart(ra, dec, survey, band, aperture, fov,
 
 
 def _plot_slit(fig, ra, dec, slit_length, slit_width, position_angle):
-    slit_label = 'PA=${0:.2f}$deg\n \n'.format(position_angle)
-    slit_label += 'width={0:.1f}"; length={1:.1f}"'.format(
-        slit_width, slit_length)
+    # slit_label = 'PA=${0:.2f}$deg\n \n'.format(position_angle)
+    # slit_label += 'width={0:.1f}"; length={1:.1f}"'.format(
+    #     slit_width, slit_length)
 
     fig = show_rectangles(fig, ra, dec, slit_width / 3600., slit_length / 3600.,
-                        edgecolor='w', lw=1.5, angle=position_angle,
+                        edgecolor='w', lw=1.0, angle=position_angle,
                         coords_frame='world')
 
 
-    if position_angle > 0 and position_angle < 180:
-        angle_offset = 180
-        dec_offset = 0
-    else:
-        angle_offset = 0
-        dec_offset = 0
+    # if position_angle > 0 and position_angle < 180:
+    #     angle_offset = 180
+    #     dec_offset = 0
+    # else:
+    #     angle_offset = 0
+    #     dec_offset = 0
 
 
-    fig.add_label(ra, dec + dec_offset, slit_label,
-                  rotation=position_angle + angle_offset + 90,
-                  size='large', color='w')
+    # fig.add_label(ra, dec + dec_offset, slit_label,
+    #               rotation=position_angle + angle_offset + 90,
+    #               size='large', color='w')
 
 
 position_dict = {"left": [8, 0], "right": [-8, 0], "top": [0, 5],
@@ -862,13 +883,13 @@ def _plot_offset_stars(fig, ra, dec, offset_df, fov, offset_id,
 
     fig.show_circles(xw=offset_df.loc[offset_id, ra_column_name],
                      yw=offset_df.loc[offset_id, dec_column_name],
-                     radius=3 / 3600.,
+                     radius=radius * 0.5,
                      edgecolor='blue',
                      lw=3)
 
     fig.show_rectangles(offset_df.drop(offset_id)[ra_column_name],
                         offset_df.drop(offset_id)[dec_column_name],
-                        radius, radius, edgecolor='blue', lw=2)
+                        radius, radius, edgecolor='blue', lw=1)
 
     abc_dict = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E'}
 
@@ -889,8 +910,8 @@ def _plot_offset_stars(fig, ra, dec, offset_df, fov, offset_id,
 
         if separation.value <= fov/2.:
             if idx == offset_id:
-                fig.add_label(ra_off + ra_pos * 3 / 3600. / 3.,
-                              dec_off + dec_pos * 3 / 3600. / 3., label,
+                fig.add_label(ra_off + ra_pos * 5 / 3600. / 3.,
+                              dec_off + dec_pos * 5 / 3600. / 3., label,
                               color='blue', size='x-large',
                               verticalalignment='center', family='serif')
 
@@ -962,8 +983,9 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
     the following surveys and bands is available:
     survey: 'desdr1'
         bands: 'grizy'
-    survey: "unwise-allwise, unwise-neo1, unwise-neo2, "unwise-neo3"
-        bands: 'w1w2w3s4
+    survey: "unwise-allwise, unwise-neo1, unwise-neo2, "unwise-neo3",
+    "unwise-neo4", "unwise-neo5", "unwise-neo6"
+        bands: 'w1w2w3w4
 
     This function takes a table object (astropy table, astropy fitstable or
     DataFrame) with specified Ra and Dec. It eiher looks for the image
@@ -1043,8 +1065,10 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
     table, format = ct.check_if_table_is_pandas_dataframe(table)
     # Add a column to the table specifying the object name used
     # for the image name
-    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                                 table[dec_col_name].values,
+    table.loc[:, 'temp_object_name'] = ut.coord_to_name(table.loc[:,
+                                                           ra_col_name].values,
+                                                 table.loc[
+                                                 :, dec_col_name].values,
                                                  epoch="J")
 
     for jdx, survey in enumerate(surveys):
@@ -1058,7 +1082,8 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
             ra = table.loc[idx, ra_col_name]
             dec = table.loc[idx, dec_col_name]
 
-            filename = image_folder_path + '/' + table.temp_object_name[idx] + "_" \
+            filename = image_folder_path + '/' + \
+                       table.loc[idx, 'temp_object_name'] + "_" \
                        + survey + "_" + band + "*.fits"
 
             data, hdr, file_path = open_image(filename, ra, dec, fov,
@@ -1070,9 +1095,10 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
 
             if data is None and auto_download is True:
 
-                if survey == "desdr1":
-                    url = ct.get_desdr1_deepest_image_url(ra,
+                if survey in ["desdr1", "desdr2"]:
+                    url = ct.get_des_deepest_image_url(ra,
                                                        dec,
+                                                       data_release=survey[-3:],
                                                        fov=fov,
                                                        band=band,
                                                        verbosity=verbosity)
@@ -1095,10 +1121,12 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                         "\n "
                         "Possible survey names include: desdr1, "
                         "unwise-allwise, unwise-neo1, unwise-neo2, "
-                        "unwise-neo3".format(survey, band))
+                        "unwise-neo3, unwise-neo4, unwise-neo5,"
+                        "unwise-neo6".format(survey, band))
 
                 if url is not None:
-                    img_name = table.temp_object_name[idx] + "_" + survey +  \
+                    img_name = table.loc[idx,'temp_object_name'] + "_" + \
+                                         survey +  \
                                "_" + band + "_fov" + '{:d}'.format(fov)
                     ct.download_image(url, image_name=img_name,
                                    image_folder_path=image_folder_path,
@@ -1141,7 +1169,7 @@ def get_forced_photometry(table, ra_col_name, dec_col_name, surveys,
                 table.loc[idx, 'forced_{}_{}_comment'.format(survey, band)] = \
                     'image_not_available'.format(aperture)
 
-    table.drop(columns='temp_object_name')
+    table.drop(columns='temp_object_name', inplace=True)
 
     table = ct.convert_table_to_format(table, format)
 
@@ -1291,12 +1319,13 @@ def _mp_get_forced_photometry(index, ra, dec, survey,
 
     if data is None and auto_download is True:
 
-        if survey == "desdr1":
-            url = ct.get_desdr1_deepest_image_url(ra,
-                                                  dec,
-                                                  fov=fov,
-                                                  band=band,
-                                                  verbosity=verbosity)
+        if survey in ["desdr1", "desdr2"]:
+            url = ct.get_des_deepest_image_url(ra,
+                                               dec,
+                                               data_release=survey[-3:],
+                                               fov=fov,
+                                               band=band,
+                                               verbosity=verbosity)
         elif survey.split("-")[0] == "unwise" and band in ["w1",
                                                            "w2",
                                                            "w3",
@@ -1316,7 +1345,8 @@ def _mp_get_forced_photometry(index, ra, dec, survey,
                 "\n "
                 "Possible survey names include: desdr1, "
                 "unwise-allwise, unwise-neo1, unwise-neo2, "
-                "unwise-neo3".format(survey, band))
+                "unwise-neo3, unwise-neo4, unwise-neo5,"
+                "unwise-neo6".format(survey, band))
 
         if url is not None:
             img_name = temp_object_name + "_" + survey + \

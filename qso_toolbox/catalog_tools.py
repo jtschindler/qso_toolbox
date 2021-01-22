@@ -82,7 +82,8 @@ vsa_info_dict = {'vhsdr6': ('VHS', 'VHSDR6', 'tilestack'),
 vsa_survey_list = ['vhsdr6', 'vikingdr5']
 
 # all surveys that directly allow to download fits files
-unzipped_download_list = ['desdr1', 'ps1', 'vhsdr6', 'vikingdr5', '2MASS',
+unzipped_download_list = ['desdr1', 'desdr2', 'ps1', 'vhsdr6', 'vikingdr5',
+                          '2MASS',
                           'DSS2']
 
 # ------------------------------------------------------------------------------
@@ -936,8 +937,10 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
 
     table, table_format = check_if_table_is_pandas_dataframe(table)
 
-    table['temp_object_name'] = ut.coord_to_name(table[ra_col_name].values,
-                                                 table[dec_col_name].values,
+    table.loc[:, 'temp_object_name'] = ut.coord_to_name(table.loc[:,
+                                                 ra_col_name].values,
+                                                 table.loc[
+                                                 :,dec_col_name].values,
                                                  epoch="J")
 
     for jdx, band in enumerate(bands):
@@ -1007,7 +1010,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                     print('Survey {} is not in vsa_info_dict. \n Download '
                           'not possible.'.format(survey))
 
-            elif survey == "desdr1" and band in ["g", "r", "i", "z", "Y"]:
+            elif survey in ["desdr1", "desdr2"] and band in ["g", "r", "i",
+                                                             "z", "Y"]:
 
                 img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
                            band + "_fov" + '{:d}'.format(fov)
@@ -1016,10 +1020,12 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                 file_exists = os.path.isfile(file_path)
 
                 if file_exists is not True:
-                    url = get_desdr1_deepest_image_url(ra, dec, svc=svc,
-                                                       fov=fov,
-                                                   band=band,
-                                                   verbosity=verbosity)
+                    url = get_des_deepest_image_url(ra, dec,
+                                                    data_release=survey[-3:],
+                                                    svc=svc,
+                                                    fov=fov,
+                                                    band=band,
+                                                    verbosity=verbosity)
                 else:
                     url = None
                     if verbosity > 1:
@@ -1027,7 +1033,6 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
 
             elif survey.split("-")[0] == "unwise" and band in ["w1", "w2",
                                                                "w3", "w4"]:
-
                 # Hack to create npix from fov approximately
                 npix = int(round(fov/60./4. * 100))
 
@@ -1087,7 +1092,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                                  "Possible survey names include: desdr1, ps1,"
                                  "vhsdr6, vikingdr5,"
                                  "unwise-allwise, unwise-neo1, unwise-neo2, "
-                                 "unwise-neo3".format(survey, band))
+                                 "unwise-neo3, unwise-neo4, unwise-neo5, "
+                                 "unwise-neo6".format(survey, band))
 
             if url is not None:
                 download_image(url, image_name=img_name, image_folder_path=image_folder_path,
@@ -1266,8 +1272,16 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
             print('Survey {} is not in vsa_info_dict. \n Download '
                   'not possible.'.format(survey))
 
-    elif survey == "desdr1":
-        def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+    elif survey in ["desdr1", "desdr2"]:
+
+        if survey[-3:] == 'dr1':
+            def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+        elif survey[-3:] == 'dr2':
+            def_access_url = "https://datalab.noao.edu/sia/des_dr2"
+        else:
+            raise ValueError('[ERROR] DES data release not recognized. '
+                             'Possible values can be "dr1", "dr2".')
+
         svc = sia.SIAService(def_access_url)
 
         img_name = temp_object_name + "_" + survey + "_" + \
@@ -1277,9 +1291,12 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
         file_exists = os.path.isfile(file_path)
 
         if file_exists is not True:
-            url = get_desdr1_deepest_image_url(ra, dec, svc=svc, fov=fov,
-                                               band=band,
-                                               verbosity=verbosity)
+            url = get_des_deepest_image_url(ra, dec,
+                                            data_release=survey[-3:],
+                                            svc=svc,
+                                            fov=fov,
+                                            band=band,
+                                            verbosity=verbosity)
         else:
             url = None
 
@@ -1395,7 +1412,8 @@ def download_image(url, image_name, image_folder_path, verbosity=0):
                                                                   image_folder_path))
 
             elif survey in ["unwise-allwise", "unwise-neo1", "unwise-neo2",
-                            "unwise-neo3"]:
+                            "unwise-neo3", "unwise-neo4", "unwise-neo5",
+                            "unwise-neo6"]:
 
 
                 datafile = urlopen(url)
@@ -1420,10 +1438,12 @@ def download_image(url, image_name, image_folder_path, verbosity=0):
             else:
                 raise ValueError("Survey name not recognized: {}. "
                                  "\n "
-                                 "Possible survey names include: desdr1, ps1, "
+                                 "Possible survey names include: desdr1, "
+                                 "desdr2, ps1, "
                                  "vhsdr6, 2MASS, "
                                  "unwise-allwise, unwise-neo1, unwise-neo2, "
-                                 "unwise-neo3".format(survey))
+                                 "unwise-neo3, unwise-neo4, unwise-neo5, "
+                                  "unwise-neo6".format(survey))
 
         else:
             if verbosity > 0:
@@ -1711,14 +1731,16 @@ def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
 
 
 
-def get_desdr1_deepest_image_url(ra, dec, svc=None, fov=6, band='g', \
-                                                               verbosity=0):
+def get_des_deepest_image_url(ra, dec, data_release, svc=None, fov=6,
+                              band='g', verbosity=0):
     """Return the url from where the DES DR1 cutout can be downloaded.
 
     :param ra: float
         Right ascension of target
     :param dec: float
         Declination of target
+    :param data_release: string
+        Possible data release strings are 'DR1' and 'DR2'
     :param fov: float
         Field of view in arcseconds
     :param band: str
@@ -1733,11 +1755,17 @@ def get_desdr1_deepest_image_url(ra, dec, svc=None, fov=6, band='g', \
     # time.sleep(2)
     # # Set the DES DR1 NOAO sia url
     if svc is None:
-        def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+        if data_release == 'dr1':
+            def_access_url = "https://datalab.noao.edu/sia/des_dr1"
+        elif data_release == 'dr2':
+            def_access_url = "https://datalab.noao.edu/sia/des_dr2"
+        else:
+            raise ValueError('[ERROR] DES data release not recognized. '
+                             'Possible values can be "dr1", "dr2".')
         svc = sia.SIAService(def_access_url)
 
     if verbosity > 0:
-        print(svc)
+        print('[INFO] SVC: ', svc)
 
     fov = fov / 3600.
 
@@ -1803,7 +1831,7 @@ def get_unwise_image_url(ra, dec, npix, band, data_release, filetype="image"):
         Passband of the image
     :param data_release: str
         String specifying the unwise data release. Possible values are: neo1,
-        neo2, neo3, allwise
+        neo2, neo3, neo4, neo5. neo6, allwise
     :param verbosity: int
         Verbosity > 0 will print verbose statements during the execution
     :return: str
@@ -1820,19 +1848,22 @@ def get_unwise_image_url(ra, dec, npix, band, data_release, filetype="image"):
 
     file_type = datatype[filetype]
 
-    basedr = dict(neo1="http://unwise.me/cutout_fits?version=neo1&",
-                neo2="http://unwise.me/cutout_fits?version=neo2&",
-                neo3="http://unwise.me/cutout_fits?version=neo3&",
-                 allwise="http://unwise.me/cutout_fits?version=allwise&")
-    base = basedr[data_release]
+    base = "http://unwise.me/cutout_fits?version={}&".format(data_release)
+
     ra = "ra={:0}&".format(ra)
     dec = "dec={:0}&".format(dec)
     size = "size={:0}&".format(npix)
-    band = "bands={0:s}".format(band)
 
-    url = base + ra + dec + size + band + file_type
+    if data_release in ['neo4', 'neo5', 'neo6'] and band in ['3', '4']:
+        print('[ERROR] Download of band w{} in unwise-{} not '
+              'available'.format(band, data_release))
+        return None
 
-    return url
+    else:
+
+        band = "bands={0:s}".format(band)
+        url = base + ra + dec + size + band + file_type
+        return url
 
 
 def get_vsa_image_url(ra, dec, fov, band, vsa_info=('VHS','VHSDR6',
