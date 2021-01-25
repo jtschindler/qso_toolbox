@@ -1,10 +1,11 @@
 
+import re
 import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 
 def decra_to_hms(dra):
-    """Convert Right Ascension in deciaml degrees to hours, minutes, seconds.
+    """Convert Right Ascension in decimal degrees to hours, minutes, seconds.
 
     :param dra: float
         Right Ascension in decimal degrees
@@ -31,6 +32,103 @@ def decdecl_to_dms(ddecl):
     decl_degrees[is_negative] = - decl_degrees[is_negative]
 
     return decl_degrees, decl_minutes, decl_seconds
+
+def hmsra2decdeg(ra_hms, delimiter=':'):
+
+    if isinstance(ra_hms, float) or isinstance(ra_hms, int):
+
+        return convert_hmsra2decdeg(ra_hms, delimiter=delimiter)
+
+    elif isinstance(ra_hms, np.ndarray):
+
+        ra_deg = np.zeros_like(ra_hms)
+        for idx, ra in enumerate(ra_hms):
+
+            ra_deg[idx] = convert_hmsra2decdeg(ra, delimiter=delimiter)
+
+        return ra_deg
+
+    else:
+        raise TypeError("Input type {} not understood (float, int, "
+                        "np.ndarray)".format(type(ra_hms)))
+
+
+def convert_hmsra2decdeg(ra_hms, delimiter=':'):
+
+    if delimiter is None:
+        ra_hours = float(ra_hms[0:2])
+        ra_minutes = float(ra_hms[2:4])
+        ra_seconds = float(ra_hms[4:10])
+    if delimiter ==':':
+        ra_hours = float(ra_hms[0:2])
+        ra_minutes = float(ra_hms[3:5])
+        ra_seconds = float(ra_hms[6:12])
+
+    return (ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.
+
+
+def dmsdec2decdeg(dec_dms, delimiter=':'):
+
+
+    if isinstance(dec_dms, float) or isinstance(dec_dms, int):
+
+        return convert_hmsra2decdeg(dec_dms, delimiter=delimiter)
+
+    elif isinstance(dec_dms, np.ndarray):
+
+        dec_deg = np.zeros_like(dec_dms)
+        for idx, dec in enumerate(dec_dms):
+            dec_deg[idx] = convert_dmsdec2decdeg(dec, delimiter=delimiter)
+
+        return dec_deg
+
+    else:
+        raise TypeError("Input type {} not understood (float, int, "
+                        "np.ndarray)".format(type(dec_dms)))
+
+def convert_dmsdec2decdeg(dec_dms,delimiter=':'):
+
+    if delimiter is None:
+        dec_degrees = float(dec_dms[0:3])
+        dec_minutes = float(dec_dms[3:5])
+        dec_seconds = float(dec_dms[5:10])
+    if delimiter is not None:
+        dec_degrees = float(dec_dms.split(delimiter)[0])
+        dec_minutes = float(dec_dms.split(delimiter)[1])
+        dec_seconds = float(dec_dms.split(delimiter)[2])
+
+    # print(dec_dms[0])
+
+    if dec_dms[0] == '-':
+        is_positive = False
+    else:
+        is_positive = True
+
+    dec = abs(dec_degrees) + dec_minutes/60. + dec_seconds/3600.
+
+    if is_positive is False:
+        dec = -dec
+
+    return dec
+
+def designation_to_coord(designation, delimiter=None, prefix=None):
+
+    if prefix is None:
+        prefix = re.search(r'[a-z]+', designation, re.IGNORECASE).group(0)
+
+    designation = designation.replace(prefix, '')
+
+    if '+' in designation:
+        ra_hms = designation.split('+')[0]
+        dec_dms = '+' + designation.split('+')[1]
+    elif '-' in designation:
+        ra_hms = designation.split('-')[0]
+        dec_dms = '-' + designation.split('-')[1]
+
+    ra_deg = convert_hmsra2decdeg(ra_hms, delimiter=delimiter)
+    dec_deg = convert_dmsdec2decdeg(dec_dms, delimiter=delimiter)
+
+    return ra_deg, dec_deg
 
 
 def coord_to_hmsdms(dra, ddecl):

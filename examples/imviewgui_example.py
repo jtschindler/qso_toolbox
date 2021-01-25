@@ -113,6 +113,8 @@ n = 10
 # ct.get_photometry_mp(table[:n], ra_column_name, dec_column_name, surveys,
 #                      bands, './cutouts/', fovs, n_jobs=3, verbosity=2)
 
+
+
 ct.get_photometry(table[:n], ra_column_name, dec_column_name, surveys,
                      bands, './cutouts/', fovs, verbosity=2)
 

@@ -37,6 +37,7 @@ from pyvo.dal import sia
 import pyvo
 
 from qso_toolbox import utils as ut
+from qso_toolbox import vlass_quicklook
 
 # ------------------------------------------------------------------------------
 #  Supported surveys, data releases, bands
@@ -83,8 +84,7 @@ vsa_survey_list = ['vhsdr6', 'vikingdr5']
 
 # all surveys that directly allow to download fits files
 unzipped_download_list = ['desdr1', 'desdr2', 'ps1', 'vhsdr6', 'vikingdr5',
-                          '2MASS',
-                          'DSS2']
+                          '2MASS', 'DSS2']
 
 # ------------------------------------------------------------------------------
 #  Input table manipulation
@@ -944,7 +944,6 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                                                  epoch="J")
 
     for jdx, band in enumerate(bands):
-
         survey = surveys[jdx]
         fov = fovs[jdx]
 
@@ -959,6 +958,12 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
         for idx in table.index:
             ra = table.loc[idx, ra_col_name]
             dec = table.loc[idx, dec_col_name]
+
+            img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                       band + "_fov" + '{:d}'.format(fov)
+
+            if verbosity > 0:
+                print('[INFO] Get photometry for {}'.format(img_name))
 
 
             if survey == "ps1" and band in ["g", "r", "i", "z", "y"]:
@@ -979,6 +984,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
 
                 else:
                     url = None
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
 
             elif survey in vsa_survey_list and band in ['J', 'H', 'Ks']:
 
@@ -1003,8 +1010,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                             url = None
 
                     else:
-                        url = None
-
+                        if verbosity > 1:
+                            print('[INFO] File already exists')
                 else:
                     url = None
                     print('Survey {} is not in vsa_info_dict. \n Download '
@@ -1029,7 +1036,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                 else:
                     url = None
                     if verbosity > 1:
-                        print('File already exists')
+                        print('[INFO] File already exists')
 
             elif survey.split("-")[0] == "unwise" and band in ["w1", "w2",
                                                                "w3", "w4"]:
@@ -1051,6 +1058,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                                                data_release)
                 else:
                     url = None
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
 
             elif survey == "2MASS":
 
@@ -1066,6 +1075,8 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
 
                 else:
                     url = None
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
 
             elif survey == "DSS2":
 
@@ -1084,6 +1095,42 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
 
                 else:
                     url = None
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
+
+            elif survey == "vlass" and band in ['3GHz']:
+
+                vlass_img_name = table.temp_object_name[idx] + "_" + survey + \
+                              "_" + \
+                           band + "_fov" + '{:d}'.format(fov)
+
+                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                           band + '_raw'
+                file_path = image_folder_path + '/' + img_name + '.fits'
+                raw_file_exists = os.path.isfile(file_path)
+
+                file_path = image_folder_path + '/' + vlass_img_name + '.fits'
+                file_exists = os.path.isfile(file_path)
+
+                if raw_file_exists is not True:
+                    url = get_vlass_image_url(ra, dec, verbosity=verbosity)
+
+                elif raw_file_exists is True and file_exists is False:
+
+                    if verbosity > 1:
+                        print('[INFO] Raw file already exists.')
+
+                    vlass_quicklook.make_vlass_cutout(ra, dec, fov, img_name,
+                                                      vlass_img_name,
+                                                      image_folder_path=
+                                                      image_folder_path,
+                                                      verbosity=verbosity)
+                    url = None
+
+                else:
+                    url = None
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
 
 
             else:
@@ -1098,6 +1145,15 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
             if url is not None:
                 download_image(url, image_name=img_name, image_folder_path=image_folder_path,
                                verbosity=verbosity)
+
+            # Generate VLASS cutout after downloading the raw file
+            if survey == "vlass" and raw_file_exists is not True:
+
+
+                vlass_quicklook.make_vlass_cutout(ra, dec, fov, img_name,
+                                                  vlass_img_name,
+                                                  image_folder_path=image_folder_path,
+                                                  verbosity=verbosity)
 
 
 def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
@@ -1430,6 +1486,17 @@ def download_image(url, image_name, image_folder_path, verbosity=0):
 
                 output = open(image_folder_path + '/' + image_name + '.fits', 'wb')
                 output.write(untar)
+                output.close()
+                if verbosity > 0:
+                    print("Download of {} to {} completed".format(image_name,
+                                                                  image_folder_path))
+
+
+            elif survey == 'vlass':
+
+                file = datafile.read()
+                output = open(image_folder_path+'/'+image_name+'.fits', 'wb')
+                output.write(file)
                 output.close()
                 if verbosity > 0:
                     print("Download of {} to {} completed".format(image_name,
@@ -1879,6 +1946,13 @@ def get_vsa_image_url(ra, dec, fov, band, vsa_info=('VHS','VHSDR6',
                                     waveband=band)
 
     return url_list
+
+
+def get_vlass_image_url(ra, dec, verbosity=0):
+
+    url = vlass_quicklook.get_quicklook_url(ra, dec, verbosity=verbosity)
+
+    return url
 
 # ------------------------------------------------------------------------------
 #  Alternative helper functions for non-automatic cutout downloads
