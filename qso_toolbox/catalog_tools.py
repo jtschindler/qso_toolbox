@@ -1836,7 +1836,10 @@ def get_skymapper_deepest_image_url(ra, dec, fov, band, verbosity=0):
     image_df.query('image_type == "main"', inplace=True)
     image_df.sort_values(['exptime', 'mjd_obs'], inplace=True)
 
-    return image_df.loc[image_df.index[-1], 'get_fits']
+    if image_df.shape[0] > 0:
+        return image_df.loc[image_df.index[-1], 'get_fits']
+    else:
+        return None
 
 
 def get_des_deepest_image_url(ra, dec, data_release, svc=None, fov=6,

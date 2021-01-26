@@ -119,7 +119,13 @@ default_apertures = {'desdr1': 2.0,
                      'vhsdr6': 2.0,
                      'vikingdr5': 2.0,
                      'unwise-neo3': 6,
-                     'ps1': 2.0}
+                     'unwise-neo2': 6,
+                     'unwise-neo4': 6,
+                     'unwise-neo5': 6,
+                     'unwise-neo6': 6,
+                     'ps1': 2.0,
+                     'skymapper': 2.0,
+                     'vlass': 2.0}
 
 default_visual_classes = ['point', 'ext', 'badpix', 'blend']
 
@@ -151,7 +157,8 @@ class CutoutViewCanvas(FigureCanvas):
         self.n_row = int(math.ceil(n_images / self.n_col))
 
         self.fig = plt.figure(figsize=(5 * self.n_col, 5 * self.n_row))
-
+        self.fig.subplots_adjust(hspace=0.4)
+        
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
 
@@ -190,6 +197,7 @@ class CutoutViewCanvas(FigureCanvas):
         forced_mag_list = in_dict['f_mag_list']
         forced_magerr_list = in_dict['f_magerr_list']
         forced_sn_list = in_dict['f_sn_list']
+
 
         self.fig = it._make_mult_png_axes(self.fig,
                                            self.n_row,

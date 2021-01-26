@@ -160,7 +160,6 @@ def open_image(filename, ra, dec, fov, image_folder_path, verbosity=0):
     """
 
     filenames_available = glob.glob(filename)
-
     file_found = False
     open_file_fov = None
     file_path = None
@@ -367,9 +366,7 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
                                       epoch="J")
 
         filename = image_folder_path + '/' + coord_name[0] + "_" + survey + "_" + \
-                   band + "*.fits"
-
-        # FROM HERE - This is available as an extra function now.
+                   band + "*fov*.fits"
 
         data, hdr, file_path = open_image(filename, ra, dec, fov,
                                        image_folder_path,
@@ -413,8 +410,9 @@ def _make_mult_png_axes(fig, n_row, n_col, ra, dec, surveys, bands,
 
                 hdu = fits.ImageHDU(data=img_stamp, header=hdr)
 
-                axs = aplpy.FITSFigure(hdu, figure=fig, subplot=(n_row, n_col,
-                                                                       idx + 1), north=True)
+                axs = aplpy.FITSFigure(hdu, figure=fig,
+                                       subplot=(n_row, n_col, idx + 1),
+                                       north=True)
 
                 # Check if input color map name is a color map, else use viridis
                 try:

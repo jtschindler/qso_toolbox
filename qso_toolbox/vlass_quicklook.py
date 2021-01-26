@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import time
 import requests
 import regex as re
 import numpy as np
@@ -155,9 +156,8 @@ def search_vlass_quicklook(coord, update_summary=False,
             is True:
         tiles_df = get_tile_dataframe()
     elif update_summary == 'auto':
-        print(os.path.getmtime('./vlass_quicklook_summary.hdf5'), 24 * 3600)
-        print(os.path.getmtime('./vlass_quicklook_summary.hdf5') < 24 * 3600)
-        if os.path.getmtime('./vlass_quicklook_summary.hdf5') < 24 * 3600:
+        now = time.time()
+        if now-os.path.getmtime('./vlass_quicklook_summary.hdf5') > 24 * 3600:
             if verbosity > 1:
                 print('[INFO] Downloading VLASS quicklook summary table.')
             tiles_df = get_tile_dataframe()
