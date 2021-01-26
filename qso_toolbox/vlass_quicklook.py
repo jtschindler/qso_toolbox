@@ -22,7 +22,7 @@ except ImportError:
   from http.client import IncompleteRead
 
 from qso_toolbox import utils as ut
-
+from qso_toolbox import catalog_tools as ct
 
 def get_tile_dataframe():
 
@@ -56,7 +56,7 @@ def get_tile_dataframe():
 
 
 
-def search_tiles(tiles_df, coord, verbosity=0):
+def search_tiles(tiles_df, coord, verbosity=0, mode='recent'):
 
     ra_hr = coord.ra.hour
     dec_deg = coord.dec.deg
@@ -75,11 +75,18 @@ def search_tiles(tiles_df, coord, verbosity=0):
                                                     tile.loc[idx, 'obsdate'],
 
                                                     tile.loc[idx, 'epoch']))
-
-        tile = tile.loc[[tile.index[-1]]]
-        if verbosity > 1:
-            print('[INFO] Choosing tile with most recent observation date: {'
-                  '}'.format(tile.loc[tile.index[0], 'name']))
+        if mode == 'recent':
+            tile = tile.loc[[tile.index[-1]]]
+            if verbosity > 1:
+                print('[INFO] Choosing tile with most recent observation '
+                      'date: {}'.format(tile.loc[tile.index[0], 'name']))
+        elif mode == 'all':
+            if verbosity > 1:
+                print('[INFO] Returning all tiles:')
+                print('{}'.format(tile.loc[:, 'name']))
+        else:
+            raise ValueError('[ERROR] Search mode not understood. "mode" can '
+                             'be "recent" or "all".')
 
     elif tile.shape[0] == 0:
         if verbosity > 1:
@@ -94,78 +101,99 @@ def search_tiles(tiles_df, coord, verbosity=0):
 
 def get_closest_subtile_url(tile, coord, verbosity=0):
 
-    name = tile.loc[tile.index[0], 'name']
-    epoch = tile.loc[tile.index[0],'epoch']
-    url_base = 'https://archive-new.nrao.edu' \
-          '/vlass/quicklook/{:s}/{:s}/'.format(epoch, name)
+    vlass_urls = []
 
-    html = requests.get(url_base).content
-    subtile_df = pd.read_html(html)[-1]
-    # Remove the NaN and from the 'Last modified' column
-    subtile_df.dropna(subset=['Last modified'], inplace=True)
+    for idx in tile.index:
 
-    designations = [subtile_df.loc[idx, 'Name'].split('.')[4] for idx in
-                   subtile_df.index]
-
-    ra_list = []
-    dec_list = []
-    for designation in designations:
-
-        ra_deg, dec_deg = ut.designation_to_coord(designation)
-        ra_list.append(ra_deg)
-        dec_list.append(dec_deg)
-
-    subtile_coords = SkyCoord(np.array(ra_list), np.array(dec_list),
-                             frame='icrs', unit='deg')
-
-    dist = coord.separation(subtile_coords)
-    subtile_name = subtile_df.loc[subtile_df.index[np.argmin(dist)], 'Name']
-
-    if verbosity > 1:
-        print('[INFO] {} is closest subtile'.format(subtile_name))
-        print('[INFO] with a source distance of {:.5f} '.format(np.min(dist)))
-
-    url_base = url_base + '/{}/'.format(subtile_name)
-
-    image_name = '{}.I.iter1.image.pbcor.tt0.subim.fits'.format(subtile_name[
-                                                                0:-1])
-    return url_base+image_name
+        name = tile.loc[idx, 'name']
+        epoch = tile.loc[idx, 'epoch']
 
 
-def search_vlass_quicklook(coord, update_summary=False, verbosity=0):
+        url_base = 'https://archive-new.nrao.edu' \
+              '/vlass/quicklook/{:s}/{:s}/'.format(epoch, name)
+
+        html = requests.get(url_base).content
+        subtile_df = pd.read_html(html)[-1]
+        # Remove the NaN and from the 'Last modified' column
+        subtile_df.dropna(subset=['Last modified'], inplace=True)
+
+        designations = [subtile_df.loc[idx, 'Name'].split('.')[4] for idx in
+                       subtile_df.index]
+
+        ra_list = []
+        dec_list = []
+        for designation in designations:
+
+            ra_deg, dec_deg = ut.designation_to_coord(designation)
+            ra_list.append(ra_deg)
+            dec_list.append(dec_deg)
+
+        subtile_coords = SkyCoord(np.array(ra_list), np.array(dec_list),
+                                 frame='icrs', unit='deg')
+
+        dist = coord.separation(subtile_coords)
+        subtile_name = subtile_df.loc[subtile_df.index[np.argmin(dist)], 'Name']
+
+        if verbosity > 1:
+            print('[INFO] {} is closest subtile'.format(subtile_name))
+            print('[INFO] with a source distance of {:.5f} '.format(np.min(dist)))
+
+        url_base = url_base + '/{}/'.format(subtile_name)
+
+        image_name = '{}.I.iter1.image.pbcor.tt0.subim.fits'.format(subtile_name[ 0:-1])
+
+        vlass_urls.append(url_base+image_name)
+
+
+    return vlass_urls
+
+
+def search_vlass_quicklook(coord, update_summary=False,
+                           mode='recent',verbosity=0):
 
     if not os.path.isfile('vlass_quicklook_summary.hdf5') or update_summary \
             is True:
         tiles_df = get_tile_dataframe()
     elif update_summary == 'auto':
-        print(os.path.getmtime('./vlass_quicklook_summary.hdf5'))
+        print(os.path.getmtime('./vlass_quicklook_summary.hdf5'), 24 * 3600)
+        print(os.path.getmtime('./vlass_quicklook_summary.hdf5') < 24 * 3600)
         if os.path.getmtime('./vlass_quicklook_summary.hdf5') < 24 * 3600:
             if verbosity > 1:
-                print('[INFO] Downloading quicklook summary table.')
+                print('[INFO] Downloading VLASS quicklook summary table.')
             tiles_df = get_tile_dataframe()
         else:
             tiles_df = pd.read_hdf('vlass_quicklook_summary.hdf5', 'data')
     else:
         tiles_df = pd.read_hdf('vlass_quicklook_summary.hdf5','data')
 
-
-    tile = search_tiles(tiles_df, coord, verbosity=verbosity)
-
-    vlass_url = get_closest_subtile_url(tile, coord, verbosity=verbosity)
-
-    return vlass_url
+    tile = search_tiles(tiles_df, coord, mode=mode, verbosity=verbosity)
 
 
-def get_quicklook_url(ra, dec, update_summary='auto', verbosity=0):
+    return tile
+
+
+def get_quicklook_url(ra, dec,
+                      epoch = None,
+                      update_summary='auto',
+                      mode='all',
+                      verbosity=0):
 
     coord = SkyCoord(ra, dec, unit='deg', frame='icrs')
 
-    vlass_url = search_vlass_quicklook(coord, update_summary=update_summary,
-                                       verbosity=verbosity)
+    tile = search_vlass_quicklook(coord,
+                                  update_summary=update_summary,
+                                  mode=mode,
+                                  verbosity=verbosity)
 
-    return vlass_url
+    if epoch is not None:
+        tile = tile.query('epoch == "{}"'.format(epoch))
 
+    if tile is not None:
+        vlass_url = get_closest_subtile_url(tile, coord, verbosity=verbosity)
 
+        return vlass_url
+    else:
+        return None
 
 
 def make_vlass_cutout(ra_deg, dec_deg, fov, raw_image_name, image_name,
@@ -224,6 +252,75 @@ def make_vlass_cutout(ra_deg, dec_deg, fov, raw_image_name, image_name,
 
         hdul.writeto(filename)
 
+
+
+def download_vlass_images(ra, dec, fov, image_folder_path,
+                          update_summary='auto', verbosity=2):
+
+    ra_deg = np.array([ra])
+    dec_deg = np.array([dec])
+    coord = SkyCoord(ra, dec, unit='deg', frame='icrs')
+
+    tile = search_vlass_quicklook(coord,
+                                  update_summary=update_summary,
+                                  mode='all',
+                                  verbosity=0)
+
+    survey = 'vlass'
+    band = '3GHz'
+
+    for tdx in tile.index:
+        temp_object_name = ut.coord_to_name(ra_deg,
+                           dec_deg,
+                           epoch="J")
+
+        epoch = tile.loc[tdx, 'epoch']
+
+        vlass_img_name = temp_object_name[0] + "_" + survey + \
+                         "_" + band + '_{}'.format(epoch) + "_fov" + \
+                         '{:d}'.format(fov)
+
+        raw_img_name = temp_object_name[0] + "_" + survey + "_" + \
+                   band + '_{}'.format(epoch) + '_raw'
+
+
+        file_path = image_folder_path + '/' + raw_img_name + '.fits'
+        raw_file_exists = os.path.isfile(file_path)
+
+
+        file_path = image_folder_path + '/' + vlass_img_name + '.fits'
+        file_exists = os.path.isfile(file_path)
+
+        if raw_file_exists is False:
+
+            if verbosity > 1:
+                print('[INFO] Downloading raw VLASS images.')
+
+            url = get_quicklook_url(ra, dec,
+                  epoch=epoch,
+                  update_summary=update_summary,
+                  verbosity=verbosity)
+
+            ct.download_image(url[0], raw_img_name, image_folder_path,
+                              verbosity=verbosity)
+
+        if file_exists is False:
+
+            if verbosity > 1:
+                print('[INFO] Generating VLASS cutout image.')
+
+            make_vlass_cutout(ra, dec, fov, raw_img_name,
+                              vlass_img_name,
+                              image_folder_path=
+                              image_folder_path,
+                              verbosity=verbosity)
+
+        else:
+            if verbosity > 1:
+                print('[INFO] File already exists')
+
+
+# print(ut.coord_to_name([30.2], [-20.2]))
 
 
 # def get_cutout(imname, name, c, epoch):

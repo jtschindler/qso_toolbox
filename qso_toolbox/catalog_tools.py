@@ -84,7 +84,7 @@ vsa_survey_list = ['vhsdr6', 'vikingdr5']
 
 # all surveys that directly allow to download fits files
 unzipped_download_list = ['desdr1', 'desdr2', 'ps1', 'vhsdr6', 'vikingdr5',
-                          '2MASS', 'DSS2']
+                          '2MASS', 'DSS2', 'skymapper']
 
 # ------------------------------------------------------------------------------
 #  Input table manipulation
@@ -1101,31 +1101,59 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
             elif survey == "vlass" and band in ['3GHz']:
 
                 vlass_img_name = table.temp_object_name[idx] + "_" + survey + \
-                              "_" + \
-                           band + "_fov" + '{:d}'.format(fov)
+                                 "_" + band + "_fov" + '{:d}'.format(fov)
 
-                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
-                           band + '_raw'
-                file_path = image_folder_path + '/' + img_name + '.fits'
+
+                raw_img_name = table.temp_object_name[idx] + "_" + survey + \
+                              "_" + band + '_raw'
+
+
+                file_path = image_folder_path + '/' + raw_img_name + '.fits'
                 raw_file_exists = os.path.isfile(file_path)
+
 
                 file_path = image_folder_path + '/' + vlass_img_name + '.fits'
                 file_exists = os.path.isfile(file_path)
 
-                if raw_file_exists is not True:
-                    url = get_vlass_image_url(ra, dec, verbosity=verbosity)
+                if raw_file_exists is False:
+                    url = vlass_quicklook.get_quicklook_url(ra, dec,
+                                                            mode='recent',
+                                                            update_summary='auto',
+                                                            verbosity=verbosity)
 
-                elif raw_file_exists is True and file_exists is False:
+                    download_image(url[0], raw_img_name, image_folder_path,
+                                   verbosity=verbosity)
+
+                if file_exists is False:
 
                     if verbosity > 1:
-                        print('[INFO] Raw file already exists.')
+                        print('[INFO] Generating VLASS cutout image.')
 
-                    vlass_quicklook.make_vlass_cutout(ra, dec, fov, img_name,
+                    vlass_quicklook.make_vlass_cutout(ra, dec, fov,
+                                                      raw_img_name,
                                                       vlass_img_name,
                                                       image_folder_path=
                                                       image_folder_path,
                                                       verbosity=verbosity)
-                    url = None
+
+                else:
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
+                url = None
+
+
+            elif survey == 'skymapper' and band in ['u', 'v', 'g', 'r', 'i',
+                                                    'z']:
+
+                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                           band + "_fov" + '{:d}'.format(fov)
+
+                file_path = image_folder_path + '/' + img_name + '.fits'
+                file_exists = os.path.isfile(file_path)
+
+                if file_exists is not True:
+                    url = get_skymapper_deepest_image_url(ra, dec, fov, band,
+                                              verbosity=verbosity)
 
                 else:
                     url = None
@@ -1143,17 +1171,9 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                                  "unwise-neo6".format(survey, band))
 
             if url is not None:
-                download_image(url, image_name=img_name, image_folder_path=image_folder_path,
-                               verbosity=verbosity)
-
-            # Generate VLASS cutout after downloading the raw file
-            if survey == "vlass" and raw_file_exists is not True:
-
-
-                vlass_quicklook.make_vlass_cutout(ra, dec, fov, img_name,
-                                                  vlass_img_name,
-                                                  image_folder_path=image_folder_path,
-                                                  verbosity=verbosity)
+                download_image(url, image_name=img_name,
+                                   image_folder_path=image_folder_path,
+                                   verbosity=verbosity)
 
 
 def get_photometry_mp(table, ra_col_name, dec_col_name, surveys, bands,
@@ -1798,6 +1818,27 @@ def get_tmass_image_url(ra, dec, fov, band, verbosity=0):
 
 
 
+def get_skymapper_deepest_image_url(ra, dec, fov, band, verbosity=0):
+
+
+    size = fov / 3600. # field of view in degrees
+
+    url_base = 'http://api.skymapper.nci.org.au/public/siap/dr2/query?'
+    skymapper_url = url_base + 'POS={},{}&SIZE={}&BAND={}'.format(ra, dec,
+                                                                  size,
+                                                                  band)
+    skymapper_url += '&FORMAT=GRAPHIC&RESPONSEFORMAT=CSV'
+
+    image_df = pd.read_csv(urlopen(skymapper_url))
+
+    # Select only most recent images from the main survey with the largest
+    # exposure times
+    image_df.query('image_type == "main"', inplace=True)
+    image_df.sort_values(['exptime', 'mjd_obs'], inplace=True)
+
+    return image_df.loc[image_df.index[-1], 'get_fits']
+
+
 def get_des_deepest_image_url(ra, dec, data_release, svc=None, fov=6,
                               band='g', verbosity=0):
     """Return the url from where the DES DR1 cutout can be downloaded.
@@ -1947,12 +1988,6 @@ def get_vsa_image_url(ra, dec, fov, band, vsa_info=('VHS','VHSDR6',
 
     return url_list
 
-
-def get_vlass_image_url(ra, dec, verbosity=0):
-
-    url = vlass_quicklook.get_quicklook_url(ra, dec, verbosity=verbosity)
-
-    return url
 
 # ------------------------------------------------------------------------------
 #  Alternative helper functions for non-automatic cutout downloads
