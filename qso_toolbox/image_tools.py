@@ -1424,53 +1424,53 @@ def calculate_forced_aperture_photometry(filepath, ra, dec, survey,
     pixel_coordinate = wcs_img.wcs_world2pix(ra, dec, 1)
 
     # QUICKFIX to stop aperture photometry from crashing
-    try:
+    # try:
         # Get photometry
-        positions = (pixel_coordinate[0], pixel_coordinate[1])
-        apertures = CircularAperture(positions, r=aperture_pixel)
-        f = aperture_photometry(data, apertures)
-        flux = np.ma.masked_invalid(f['aperture_sum'])
+    positions = (pixel_coordinate[0], pixel_coordinate[1])
+    apertures = CircularAperture(positions, r=aperture_pixel)
+    f = aperture_photometry(data, apertures)
+    flux = np.ma.masked_invalid(f['aperture_sum'])
 
-        # Get the noise
-        rmsimg, mean_noise, empty_flux = get_noiseaper(data, aperture_pixel)
+    # Get the noise
+    rmsimg, mean_noise, empty_flux = get_noiseaper(data, aperture_pixel)
 
-        sn = flux[0] / rmsimg
+    sn = flux[0] / rmsimg
 
-        comment = 'ap_{}'.format(aperture)
+    comment = 'ap_{}'.format(aperture)
 
-        if verbosity > 0:
-            print("flux: ", flux[0], "sn: ", sn)
+    if verbosity > 0:
+        print("flux: ", flux[0], "sn: ", sn)
 
-        if sn < 0:
-            flux[0] = rmsimg
-            err = -1
-            mags = flux_to_magnitude(flux, survey)[0]
-        else:
-            mags = flux_to_magnitude(flux, survey)[0]
-            err = mag_err(1. / sn, verbose=False)
+    if sn < 0:
+        flux[0] = rmsimg
+        err = -1
+        mags = flux_to_magnitude(flux, survey)[0]
+    else:
+        mags = flux_to_magnitude(flux, survey)[0]
+        err = mag_err(1. / sn, verbose=False)
 
-        if verbosity > 0:
-            print("mag: ", mags)
+    if verbosity > 0:
+        print("mag: ", mags)
 
-        if mags is np.ma.masked:
-            mags = -999
-            comment = 'masked'
-        if sn is np.ma.masked:
-            sn = np.nan
-        if err is np.ma.masked:
-            err = np.nan
-        if flux[0] is np.ma.masked:
-            flux = np.nan
-        else:
-            flux = flux[0]
+    if mags is np.ma.masked:
+        mags = -999
+        comment = 'masked'
+    if sn is np.ma.masked:
+        sn = np.nan
+    if err is np.ma.masked:
+        err = np.nan
+    if flux[0] is np.ma.masked:
+        flux = np.nan
+    else:
+        flux = flux[0]
 
-        survey_band = survey+'_'+band
-        mags = pt.vega_to_ab(mags, survey_band)
+    survey_band = survey+'_'+band
+    mags = pt.vega_to_ab(mags, survey_band)
 
-        return mags, flux, sn, err, comment
+    return mags, flux, sn, err, comment
 
-    except ValueError:
-        return -999, np.nan, np.nan, np.nan, 'crashed'
+    # except ValueError:
+    #     return -999, np.nan, np.nan, np.nan, 'crashed'
 
 
 # ------------------------------------------------------------------------------
@@ -1536,12 +1536,10 @@ def mag_err(noise_flux_ratio, verbose=True):
 
 def get_noiseaper(data, radius):
     # print("estimating noise in aperture: ", radius)
-
-    sources_mask = make_source_mask(data, snr=2.5, npixels=3,
+    sources_mask = make_source_mask(data, nsigma=2.5, npixels=3,
                                      dilate_size=15, filter_fwhm=4.5)
 
-
-    N=5100
+    N = 5100
     ny, nx = data.shape
     x1 = np.int(nx * 0.09)
     x2 = np.int(nx * 0.91)
@@ -1551,10 +1549,10 @@ def get_noiseaper(data, radius):
     yy = np.random.uniform(y1, y2, N)
 
     mask = sources_mask[np.int_(yy), np.int_(xx)]
-    xx= xx[~mask]
+    xx = xx[~mask]
     yy = yy[~mask]
 
-    positions = (xx, yy)
+    positions = list(zip(xx, yy))
     apertures = CircularAperture(positions, r=radius)
     f = aperture_photometry(data, apertures, mask=sources_mask)
     f = np.ma.masked_invalid(f['aperture_sum'])

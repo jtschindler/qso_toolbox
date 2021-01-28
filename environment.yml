@@ -1,0 +1,21 @@
+# run: conda env create --file environment.yml
+name: qsotoolbox
+channels:
+- conda-forge
+- defaults
+- astropy
+dependencies:
+- python=3.7
+- aplpy
+- scipy>=1.5.0
+- astropy>=4.1
+- matplotlib>=3.3.2
+- numpy>=1.19.1
+- pandas>=1.2.1
+- pip>=20.3.3
+- pyqt>=5.9.2
+- pytables>=3.6.1
+- notebook>=6.2
+- astroquery>=0.4
+- regex>=2020.11
+- photutils>=1.0.2 

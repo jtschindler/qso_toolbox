@@ -1908,11 +1908,10 @@ def get_des_deepest_image_url(ra, dec, data_release, svc=None, fov=6,
 
         # basic selection
         table = img_table[sel]  # select
-
         if len(table) > 0:
             row = table[np.argmax(table['exptime'].data.data.astype(
                 'float'))]  # pick image with longest exposure time
-            url = row['access_url'].decode()  # get the download URL
+            url = row['access_url'] # get the download URL
 
             if verbosity > 0:
                 print('downloading deepest stacked image...')

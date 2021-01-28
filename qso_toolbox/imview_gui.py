@@ -158,7 +158,7 @@ class CutoutViewCanvas(FigureCanvas):
 
         self.fig = plt.figure(figsize=(5 * self.n_col, 5 * self.n_row))
         self.fig.subplots_adjust(hspace=0.4)
-        
+
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
 
