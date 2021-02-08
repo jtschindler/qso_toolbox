@@ -297,7 +297,7 @@ def download_vlass_images(ra, dec, fov, image_folder_path,
                          "_" + band + '_{}'.format(epoch) + "_fov" + \
                          '{:d}'.format(fov)
 
-        raw_img_name = outputfile_basename + "_" + survey + "_" + \
+        raw_img_name = temp_object_name[0] + "_" + survey + "_" + \
                    band + '_{}'.format(epoch) + '_raw'
 
 
