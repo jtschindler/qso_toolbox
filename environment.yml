@@ -18,4 +18,5 @@ dependencies:
 - notebook>=6.2
 - astroquery>=0.4
 - regex>=2020.11
-- photutils>=1.0.2 
+- photutils>=1.0.2
+- lxml

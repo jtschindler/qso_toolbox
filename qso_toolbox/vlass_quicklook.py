@@ -51,7 +51,7 @@ def get_tile_dataframe():
                            'epoch': linedata[5],
                            }, ignore_index=True)
 
-    df.to_hdf('vlass_quicklook_summary.hdf5','data')
+    df.to_hdf('vlass_quicklook_summary.hdf5', 'data')
 
     return df
 
@@ -150,7 +150,7 @@ def get_closest_subtile_url(tile, coord, verbosity=0):
 
 
 def search_vlass_quicklook(coord, update_summary=False,
-                           mode='recent',verbosity=0):
+                           mode='recent', verbosity=0):
 
     if not os.path.isfile('vlass_quicklook_summary.hdf5') or update_summary \
             is True:
@@ -164,7 +164,7 @@ def search_vlass_quicklook(coord, update_summary=False,
         else:
             tiles_df = pd.read_hdf('vlass_quicklook_summary.hdf5', 'data')
     else:
-        tiles_df = pd.read_hdf('vlass_quicklook_summary.hdf5','data')
+        tiles_df = pd.read_hdf('vlass_quicklook_summary.hdf5', 'data')
 
     tile = search_tiles(tiles_df, coord, mode=mode, verbosity=verbosity)
 
@@ -255,7 +255,21 @@ def make_vlass_cutout(ra_deg, dec_deg, fov, raw_image_name, image_name,
 
 
 def download_vlass_images(ra, dec, fov, image_folder_path,
-                          update_summary='auto', verbosity=2):
+                          update_summary='auto', verbosity=2,
+                          outputfile_basename=None):
+    """
+
+    :param ra: R.A. of source in decimal degrees
+    :param dec: Decl. of source in decimal degrees
+    :param fov: Field of view in arcseconds
+    :param image_folder_path: Name of the path where downloaded images are
+    stored
+    :param update_summary: "False" only read summary file, "True" always
+    download and read summary file, "auto" donwload summary file if older
+    than 24 hours otherwise just read.
+    :param verbosity: Verbose output
+    :return: None
+    """
 
     ra_deg = np.array([ra])
     dec_deg = np.array([dec])
@@ -276,11 +290,14 @@ def download_vlass_images(ra, dec, fov, image_folder_path,
 
         epoch = tile.loc[tdx, 'epoch']
 
-        vlass_img_name = temp_object_name[0] + "_" + survey + \
+        if outputfile_basename is None:
+            outputfile_basename = temp_object_name[0]
+
+        vlass_img_name = outputfile_basename + "_" + survey + \
                          "_" + band + '_{}'.format(epoch) + "_fov" + \
                          '{:d}'.format(fov)
 
-        raw_img_name = temp_object_name[0] + "_" + survey + "_" + \
+        raw_img_name = outputfile_basename + "_" + survey + "_" + \
                    band + '_{}'.format(epoch) + '_raw'
 
 
