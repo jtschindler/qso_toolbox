@@ -19,6 +19,7 @@ from astropy import utils, io
 from astroquery.vizier import Vizier
 from astroquery.irsa import Irsa
 from astroquery.vsa import Vsa
+from astroquery.ukidss import Ukidss
 from astroquery.sdss import SDSS
 
 from dl import queryClient as qc
@@ -84,7 +85,7 @@ vsa_survey_list = ['vhsdr6', 'vikingdr5']
 
 # all surveys that directly allow to download fits files
 unzipped_download_list = ['desdr1', 'desdr2', 'ps1', 'vhsdr6', 'vikingdr5',
-                          '2MASS', 'DSS2', 'skymapper']
+                          '2MASS', 'DSS2', 'skymapper', 'ukidss']
 
 # ------------------------------------------------------------------------------
 #  Input table manipulation
@@ -1004,6 +1005,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                         url_list = get_vsa_image_url(ra, dec, fov=fov,
                                                      band=band,
                                                      vsa_info=vsa_info)
+
                         if url_list:
                             url = url_list[-1]
                         else:
@@ -1157,6 +1159,32 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
 
                 else:
                     url = None
+                    if verbosity > 1:
+                        print('[INFO] File already exists')
+
+            elif survey == 'ukidss' and band in ['Y', 'J', 'H', 'K']:
+
+                img_name = table.temp_object_name[idx] + "_" + survey + "_" + \
+                           band + "_fov" + '{:d}'.format(fov)
+
+                file_path = image_folder_path + '/' + img_name + '.fits'
+                file_exists = os.path.isfile(file_path)
+
+                if file_exists is not True:
+
+                    url_list = get_ukidss_image_url(ra, dec, fov=fov,
+                                                 band=band,
+                                                 # ukidss_info=,
+                                                    )
+
+                    print('[TEST] UKIDSS URL LIST: ', url_list)
+
+                    if url_list:
+                        url = url_list[-1]
+                    else:
+                        url = None
+
+                else:
                     if verbosity > 1:
                         print('[INFO] File already exists')
 
@@ -1347,6 +1375,33 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
             url = None
             print('Survey {} is not in vsa_info_dict. \n Download '
                   'not possible.'.format(survey))
+
+
+    elif survey == 'ukidss' and band in ['Y', 'J', 'H', 'K']:
+
+        img_name = temp_object_name + "_" + survey + "_" + \
+                   band + "_fov" + '{:d}'.format(fov)
+
+        file_path = image_folder_path + '/' + img_name + '.fits'
+        file_exists = os.path.isfile(file_path)
+
+        if file_exists is not True:
+
+            url_list = get_ukidss_image_url(ra, dec, fov=fov,
+                                            band=band,
+                                            # ukidss_info=,
+                                            )
+
+            if url_list:
+                url = url_list[-1]
+            else:
+                url = None
+
+        else:
+            if verbosity > 1:
+                print('[INFO] File already exists')
+
+
 
     elif survey in ["desdr1", "desdr2"]:
 
@@ -1989,6 +2044,26 @@ def get_vsa_image_url(ra, dec, fov, band, vsa_info=('VHS','VHSDR6',
                                     waveband=band)
 
     return url_list
+
+
+def get_ukidss_image_url(ra, dec, fov, band, ukidss_info=('LAS',
+                                                          'UKIDSSDR11PLUS',
+                                                          'stack')):
+
+    programme_id, database, frame_type = ukidss_info
+
+    target_coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg), frame='icrs')
+
+    url_list = Ukidss.get_image_list(target_coord,
+                                  frame_type='stack',
+                                  waveband=band,
+                                  image_width=fov * u.arcsecond,
+                                  programme_id=programme_id,
+                                  database=database
+                                  )
+
+    return url_list
+
 
 
 # ------------------------------------------------------------------------------

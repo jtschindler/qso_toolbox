@@ -297,6 +297,8 @@ def download_vlass_images(ra, dec, fov, image_folder_path,
                          "_" + band + '_{}'.format(epoch) + "_fov" + \
                          '{:d}'.format(fov)
 
+        # Introduce different naming for raw file, possibly use default name
+        # (tilename, subtilename, etc.)
         raw_img_name = temp_object_name[0] + "_" + survey + "_" + \
                    band + '_{}'.format(epoch) + '_raw'
 
