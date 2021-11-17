@@ -1185,6 +1185,7 @@ def get_photometry(table, ra_col_name, dec_col_name, surveys, bands, image_folde
                         url = None
 
                 else:
+                    url = None
                     if verbosity > 1:
                         print('[INFO] File already exists')
 
@@ -1398,6 +1399,7 @@ def _mp_photometry_download(ra, dec, survey, band,  fov, image_folder_path,
                 url = None
 
         else:
+            url = None
             if verbosity > 1:
                 print('[INFO] File already exists')
 
