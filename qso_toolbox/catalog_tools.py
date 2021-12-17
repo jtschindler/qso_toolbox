@@ -692,12 +692,19 @@ def query_region_ps1(ra, dec, radius, survey='dr2', catalog='mean',
     if verbosity>0:
         print('Opening {}'.format(url))
 
-    ps1_data = urlopen(url)
-    check_ok = ps1_data.msg == 'OK'
+    response = urlopen(url)
+    check_ok = response.msg == 'OK'
 
-    if check_ok:
+    empty = response.read() == b''
+
+    if check_ok and not empty:
         df = pd.read_csv(url)
         return df
+
+    elif check_ok and empty:
+        if verbosity > 0:
+            print('Returned file is empty. No matches found.')
+        return None
 
     else:
         raise ValueError('Could not retrieve PS1 data.')
