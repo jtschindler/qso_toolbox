@@ -15,15 +15,15 @@ surveys = ['ukidss', 'ukidss', 'ukidss']
 bands = ['Y', 'H', 'K']
 fovs = [100, 100, 100]
 
-# start_time = time.time()
-# ct.get_photometry(test_set[:50], 'mq_ra', 'mq_dec', surveys, bands,
-#                   './cutouts/', fovs, verbosity=2)
-# print("Elapsed time: {0:.2f} sec" .format(
-#                                 time.time() - start_time))
-
 start_time = time.time()
-ct.get_photometry_mp(test_set[:1000], 'mq_ra', 'mq_dec', surveys, bands,
-                     './cutouts/', fovs, verbosity=2, n_jobs=8)
-print("MP Elapsed time: {0:.2f} sec" .format(
+ct.get_photometry(test_set[:50], 'mq_ra', 'mq_dec', surveys, bands,
+                  './cutouts/', fovs, verbosity=2)
+print("Elapsed time: {0:.2f} sec" .format(
                                 time.time() - start_time))
+
+# start_time = time.time()
+# ct.get_photometry_mp(test_set[:1000], 'mq_ra', 'mq_dec', surveys, bands,
+#                      './cutouts/', fovs, verbosity=2, n_jobs=8)
+# print("MP Elapsed time: {0:.2f} sec" .format(
+#                                 time.time() - start_time))
 

@@ -664,7 +664,7 @@ def query_region_ps1(ra, dec, radius, survey='dr2', catalog='mean',
     :param dec: float
         Declination
     :param radius: float
-        Region search radius in arcseconds
+        Region search radius in degrees
     :param survey: string
         Survey keyword for the PanSTARRS MAST query.
     :param catalog: string
@@ -1547,7 +1547,6 @@ def download_image(url, image_name, image_folder_path, verbosity=0):
             elif survey in ["unwise-allwise", "unwise-neo1", "unwise-neo2",
                             "unwise-neo3", "unwise-neo4", "unwise-neo5",
                             "unwise-neo6"]:
-
 
                 datafile = urlopen(url)
                 file = datafile.read()
