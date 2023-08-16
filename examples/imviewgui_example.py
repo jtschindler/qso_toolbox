@@ -136,4 +136,6 @@ imview.run(catalog_filename, image_path, ra_column_name,
                  visual_classes=visual_classes, verbosity=2)
 
 
+
+
 # Run a more complex example
